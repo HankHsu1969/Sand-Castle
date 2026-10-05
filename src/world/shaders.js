@@ -49,10 +49,15 @@ uniform float uFogDensity;
 uniform float uGridHalf;
 
 vec3 rippleNormal(vec2 p, float strength) {
+  // layers at unrelated scales and rotations, plus a slow patchiness mask,
+  // so the tiling of the ripple texture never lines up visibly
+  vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p;
   vec3 a = texture2D(uNormalTex, p * 0.075 + vec2(uTime * 0.011, uTime * 0.017)).xyz * 2.0 - 1.0;
-  vec3 b = texture2D(uNormalTex, p * 0.19 + vec2(-uTime * 0.019, uTime * 0.008)).xyz * 2.0 - 1.0;
+  vec3 b = texture2D(uNormalTex, q * 0.19 + vec2(-uTime * 0.019, uTime * 0.008)).xyz * 2.0 - 1.0;
   vec3 c = texture2D(uNormalTex, p * 0.43 + vec2(uTime * 0.03, -uTime * 0.021)).xyz * 2.0 - 1.0;
-  vec2 d = a.xy * 0.55 + b.xy * 0.35 + c.xy * 0.1;
+  vec3 e = texture2D(uNormalTex, q * 0.023 + vec2(uTime * 0.004, uTime * 0.006)).xyz * 2.0 - 1.0;
+  float patchy = 0.5 + sNoise(p * 0.03 + uTime * 0.01);
+  vec2 d = (a.xy * 0.5 + b.xy * 0.35 + c.xy * 0.1) * patchy + e.xy * 0.5;
   return vec3(d.x, 0.0, d.y) * strength;
 }
 

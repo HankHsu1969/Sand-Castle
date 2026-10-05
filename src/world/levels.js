@@ -227,7 +227,7 @@ export const LEVELS = [
     blurb: '河流在夕陽下分成閃亮的支流匯入大海。建造你最宏偉的城堡，迎接大潮的考驗！',
     seed: 505,
     sun: { elevation: 7, azimuth: 222, color: 0xff9a5a, intensity: 2.6 },
-    sky: { turbidity: 5.5, rayleigh: 2.8, mie: 0.007, mieG: 0.88, clouds: 0.45, exposure: 0.5 },
+    sky: { turbidity: 9, rayleigh: 3.4, mie: 0.011, mieG: 0.9, clouds: 0.48, exposure: 0.5, skyLum: 1.15 },
     hemi: { sky: 0xffb59a, ground: 0xb98a63, intensity: 0.9 },
     fog: { color: 0xf0a888, density: 0.0016 },
     sea: { shallow: 0x58c4bc, deep: 0x1d3f72, scatter: 0x8ad0c2 },
