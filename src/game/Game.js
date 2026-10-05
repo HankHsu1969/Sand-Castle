@@ -166,15 +166,25 @@ export class Game {
   boot() {
     this.loadLevel(SHOWCASE, { showcase: true });
     this.intro.prepare();
-    // go straight into the opening cinematic; sound unlocks on the first gesture
+    // Music starts right away when the browser allows autoplay; otherwise the
+    // click on the cover (a user gesture) starts it together with the intro.
     this.audio.start();
     this.audio.playMusic('title');
     const unlock = () => this.unlockAudio();
     window.addEventListener('pointerdown', unlock, { capture: true });
     window.addEventListener('keydown', unlock, { capture: true });
+    this.state = 'gate';
+    this.ui.showGate();
+    this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  enterFromGate() {
+    if (this.state !== 'gate') return;
+    this.unlockAudio();
+    this.audio.sfx('whoosh');
+    this.audio.sfx('sparkle');
     this.state = 'intro';
     this.intro.play();
-    this.renderer.setAnimationLoop(() => this.frame());
   }
 
   // browsers only allow sound after a user gesture: the first click or key
@@ -677,6 +687,7 @@ export class Game {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
       const k = e.key.toLowerCase();
       this.keys.add(k);
+      if (this.state === 'gate' && (k === ' ' || k === 'enter')) { this.ui.leaveGate(); return; }
       if (this.state === 'intro' && (k === 'escape' || k === ' ' || k === 'enter')) { this.intro.skip(); return; }
       if (this.state !== 'play') {
         if (k === 'escape') this.ui.handleEscape();
@@ -763,7 +774,7 @@ export class Game {
       this.tools.updateCursor(null);
     }
     this.tools.update(dt);
-    if (this.state === 'intro' || this.state === 'menu') this.intro.updateBuild(dt);
+    if (this.state === 'intro' || this.state === 'menu' || this.state === 'gate') this.intro.updateBuild(dt);
 
     if (playing) this.goals.update(dt);
     this.sim.update(dt);

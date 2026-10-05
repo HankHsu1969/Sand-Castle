@@ -20,7 +20,22 @@
   <div id="app"></div>
 
   <div id="ui">
-    <div id="blackout" class="show"><div class="loading"><span></span>海浪正在湧來…</div></div>
+    <!-- cover: key art + title; the first click also unlocks music and sound -->
+    <section id="gate" class="loading">
+      <div class="gate-bg"></div>
+      <div class="gate-shade"></div>
+      <div class="gate-content">
+        <img class="gate-emblem" src="assets/icons/emblem.png" alt="" />
+        <h1 class="logo">
+          <span class="logo-zh">沙堡物語</span>
+          <span class="logo-en">Sandcastle Dreams</span>
+        </h1>
+        <p class="gate-tip"><span class="gate-wait">海浪正在湧來…</span><span class="gate-go">點擊任意處開始</span></p>
+        <p class="gate-sub">🎧 建議戴上耳機，享受海浪與音樂</p>
+      </div>
+    </section>
+
+    <div id="blackout"></div>
     <div id="intro-line">海風輕拂，潮水低語……</div>
     <button id="btn-skip">跳過片頭 ▸</button>
 
