@@ -58,7 +58,6 @@ export class UI {
     });
 
     $('#btn-skip').onclick = (e) => { e.stopPropagation(); g.intro.skip(); };
-    $('#sound-pill').onclick = () => g.unlockAudio();
 
     $('#btn-start').onclick = () => {
       const open = LEVELS.findIndex((l, i) => i < g.save.unlocked && !g.save.completed.includes(l.id));
@@ -95,6 +94,10 @@ export class UI {
     $('#brush-strength').oninput = (e) => { g.tools.strength = Number(e.target.value); this.updateBrushLabel(); };
 
     $('#btn-tide').onclick = () => this.requestTide();
+    $('#goal-head').onclick = () => this.toggleMission();
+    const panel = $('#goal-panel');
+    panel.addEventListener('pointerenter', () => { this.missionHover = true; clearTimeout(this.missionTimer); });
+    panel.addEventListener('pointerleave', () => { this.missionHover = false; this.scheduleCollapse(); });
     $('#btn-undo').onclick = () => g.undo();
     $('#btn-help').onclick = () => this.toggleHelp();
     $('#btn-pause').onclick = () => this.togglePause();
@@ -134,10 +137,6 @@ export class UI {
   }
 
   // ---------- gate / intro / title ----------
-  setSoundPill(on) {
-    $('#sound-pill').classList.toggle('show', on);
-  }
-
   introStart() {
     const b = $('#blackout');
     b.classList.add('show');
@@ -244,6 +243,8 @@ export class UI {
     $('#lvl-num').textContent = level.id;
     $('#lvl-name').textContent = level.name;
     $('#lvl-en').textContent = level.en;
+    $('#lvl-blurb').textContent = level.blurb;
+    this.lastDone = undefined;
     const hasTide = level.goals.some((g) => g.type === 'tideFlag' || g.type === 'tideCrab');
     $('#tide-box').classList.toggle('featured', hasTide);
     this.selectTool(0, true);
@@ -300,6 +301,20 @@ export class UI {
       </li>`).join('');
     const found = this.game.treasures.filter((t) => t.found).length;
     $('#treasure-count').textContent = `${found} / ${this.game.treasures.length}`;
+    // collapsed header shows progress and pulses when a goal is ticked off
+    const done = list.filter((g) => g.done).length;
+    const counter = $('#goal-count');
+    if (counter.textContent !== `${done}/${list.length}`) {
+      const grew = this.lastDone !== undefined && done > this.lastDone;
+      counter.textContent = `${done}/${list.length}`;
+      if (grew) {
+        const panel = $('#goal-panel');
+        panel.classList.remove('pulse');
+        void panel.offsetWidth;
+        panel.classList.add('pulse');
+      }
+    }
+    this.lastDone = done;
   }
 
   requestTide() {
@@ -332,18 +347,25 @@ export class UI {
     }
   }
 
-  levelBanner(level) {
-    const b = $('#banner');
-    $('#banner-num').textContent = `第 ${level.id} 關`;
-    $('#banner-name').textContent = level.name;
-    $('#banner-en').textContent = level.en;
-    $('#banner-blurb').textContent = level.blurb;
-    $('#banner-goals').innerHTML = this.game.goals.list.map((g) => `<li>${g.text}</li>`).join('');
-    b.classList.add('show');
-    clearTimeout(this.bannerTimer);
-    const hide = () => b.classList.remove('show');
-    this.bannerTimer = setTimeout(hide, 6500);
-    b.onclick = hide;
+  // The mission window opens at the start of a level, folds itself away
+  // after ~10 s, and reopens whenever the player clicks its header.
+  levelBanner() {
+    this.toggleMission(true);
+  }
+
+  toggleMission(force) {
+    const panel = $('#goal-panel');
+    const open = force === undefined ? panel.classList.contains('collapsed') : force;
+    panel.classList.toggle('collapsed', !open);
+    panel.classList.toggle('expanded', open);
+    clearTimeout(this.missionTimer);
+    if (open) this.scheduleCollapse();
+  }
+
+  scheduleCollapse() {
+    clearTimeout(this.missionTimer);
+    if (this.missionHover || !$('#goal-panel').classList.contains('expanded')) return;
+    this.missionTimer = setTimeout(() => this.toggleMission(false), 10000);
   }
 
   toast(text, type = 'info') {

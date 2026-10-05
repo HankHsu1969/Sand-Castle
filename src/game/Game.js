@@ -175,12 +175,12 @@ export class Game {
     this.state = 'intro';
     this.intro.play();
     this.renderer.setAnimationLoop(() => this.frame());
-    setTimeout(() => this.ui.setSoundPill(!this.audio.running), 1200);
   }
 
+  // browsers only allow sound after a user gesture: the first click or key
+  // anywhere quietly starts the music and the surf
   unlockAudio() {
     this.audio.resume();
-    setTimeout(() => this.ui.setSoundPill(!this.audio.running), 150);
   }
 
   showMenu() {
@@ -194,6 +194,8 @@ export class Game {
     const level = LEVELS[index];
     if (!level) return;
     this.audio.sfx('whoosh');
+    this.ui.hideTitle();
+    this.ui.closePanels(true);
     await this.ui.fadeOut(level);
     this.loadLevel(level, { showcase: false });
     this.levelIndex = index;

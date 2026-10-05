@@ -9,15 +9,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!-- critical style: dark screen from the very first paint, UI hidden until the stylesheet is in -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #06121a; overflow: hidden; }
+    #ui { visibility: hidden; }
+  </style>
+  <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <div id="app"></div>
 
   <div id="ui">
-    <div id="blackout" class="show"></div>
+    <div id="blackout" class="show"><div class="loading"><span></span>海浪正在湧來…</div></div>
     <div id="intro-line">海風輕拂，潮水低語……</div>
     <button id="btn-skip">跳過片頭 ▸</button>
-    <button id="sound-pill">🔊 點一下畫面開啟音樂與海浪聲</button>
 
     <!-- title screen -->
     <section id="title">
@@ -80,15 +85,19 @@
 
     <!-- in-game HUD -->
     <div id="hud">
-      <aside id="goal-panel">
-        <div class="lvl-head">
-          <div id="lvl-num" class="lvl-num">1</div>
-          <div>
-            <div id="lvl-name" class="lvl-name"></div>
-            <div id="lvl-en" class="lvl-en"></div>
-          </div>
+      <aside id="goal-panel" class="expanded">
+        <button id="goal-head" class="lvl-head" title="點選展開／收合任務說明">
+          <span id="lvl-num" class="lvl-num">1</span>
+          <span class="lvl-titles">
+            <span id="lvl-name" class="lvl-name"></span>
+            <span id="lvl-en" class="lvl-en"></span>
+          </span>
+          <span class="goal-summary"><b id="goal-count">0/0</b><i class="chev">▾</i></span>
+        </button>
+        <div id="goal-body">
+          <p id="lvl-blurb"></p>
+          <ul id="goal-list"></ul>
         </div>
-        <ul id="goal-list"></ul>
       </aside>
 
       <div id="top-right">
@@ -148,15 +157,6 @@
         <button id="btn-pause-settings" class="menu-btn"><span>設定</span></button>
         <button id="btn-to-menu" class="menu-btn"><span>回到主選單</span></button>
       </div>
-    </div>
-
-    <div id="banner">
-      <div class="banner-num" id="banner-num"></div>
-      <h2 id="banner-name"></h2>
-      <div class="banner-en" id="banner-en"></div>
-      <p id="banner-blurb"></p>
-      <ul id="banner-goals"></ul>
-      <small>點擊開始建造</small>
     </div>
 
     <div id="treasure-modal" class="modal">
