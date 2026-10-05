@@ -58,6 +58,7 @@ export class UI {
     });
 
     $('#btn-skip').onclick = (e) => { e.stopPropagation(); g.intro.skip(); };
+    $('#gate').addEventListener('click', () => this.leaveGate());
 
     $('#btn-start').onclick = () => {
       const open = LEVELS.findIndex((l, i) => i < g.save.unlocked && !g.save.completed.includes(l.id));
@@ -137,6 +138,19 @@ export class UI {
   }
 
   // ---------- gate / intro / title ----------
+  showGate() {
+    $('#gate').classList.remove('loading');
+    $('#gate').classList.add('ready');
+  }
+
+  leaveGate() {
+    const gate = $('#gate');
+    if (!gate.classList.contains('ready') || gate.classList.contains('leaving')) return;
+    gate.classList.add('leaving');
+    setTimeout(() => gate.classList.add('hidden'), 1200);
+    this.game.enterFromGate();
+  }
+
   introStart() {
     const b = $('#blackout');
     b.classList.add('show');
