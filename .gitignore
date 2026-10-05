@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vite/
+# original full-size Higgsfield / ElevenLabs downloads (processed copies live in public/assets)
+raw/
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>沙堡物語 · Sandcastle Dreams</title>
+  <meta name="description" content="在熱帶沙灘上堆沙、築牆、挖護城河，用城堡迎接潮汐的放鬆 3D 遊戲。" />
+  <link rel="icon" href="assets/icons/emblem.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="ui">
+    <div id="blackout" class="show"></div>
+    <div id="intro-line">海風輕拂，潮水低語……</div>
+    <button id="btn-skip">跳過片頭 ▸</button>
+    <button id="sound-pill">🔊 點一下畫面開啟音樂與海浪聲</button>
+
+    <!-- title screen -->
+    <section id="title">
+      <div id="title-logo">
+        <img class="title-emblem" src="assets/icons/emblem.png" alt="" />
+        <h1 class="logo big">
+          <span class="logo-zh"><i style="--i:0">沙</i><i style="--i:1">堡</i><i style="--i:2">物</i><i style="--i:3">語</i></span>
+          <span class="logo-en">Sandcastle Dreams</span>
+        </h1>
+      </div>
+      <nav id="menu">
+        <button id="btn-start" class="menu-btn primary"><img src="assets/icons/raise.png" alt="" /><span>開始旅程</span></button>
+        <button id="btn-levels" class="menu-btn"><img src="assets/icons/wave.png" alt="" /><span>選擇海灘</span></button>
+        <button id="btn-collection" class="menu-btn"><img src="assets/icons/chest.png" alt="" /><span>寶藏圖鑑</span></button>
+        <button id="btn-settings" class="menu-btn"><img src="assets/icons/smooth.png" alt="" /><span>設定</span></button>
+        <button id="btn-credits" class="menu-btn"><img src="assets/icons/decor.png" alt="" /><span>製作名單</span></button>
+      </nav>
+      <div class="title-foot">右鍵拖曳旋轉視角 · 滾輪縮放 · 左鍵建造</div>
+    </section>
+
+    <!-- panels -->
+    <section id="panel-levels" class="panel wide">
+      <header><h2>選擇海灘</h2><button class="panel-close" aria-label="關閉">✕</button></header>
+      <div id="level-grid"></div>
+    </section>
+
+    <section id="panel-collection" class="panel wide">
+      <header><h2>寶藏圖鑑 <small id="collection-count"></small></h2><button class="panel-close" aria-label="關閉">✕</button></header>
+      <div id="collection-grid"></div>
+    </section>
+
+    <section id="panel-settings" class="panel">
+      <header><h2>設定</h2><button class="panel-close" aria-label="關閉">✕</button></header>
+      <div class="settings">
+        <label><span>🎵 音樂</span><input id="vol-music" type="range" min="0" max="1" step="0.01" /></label>
+        <label><span>🔔 音效</span><input id="vol-sfx" type="range" min="0" max="1" step="0.01" /></label>
+        <label><span>🌊 環境音</span><input id="vol-ambience" type="range" min="0" max="1" step="0.01" /></label>
+        <label><span>🖥️ 畫質</span>
+          <select id="quality">
+            <option value="high">高（最精緻）</option>
+            <option value="medium">中</option>
+            <option value="low">低（較流暢）</option>
+          </select>
+        </label>
+        <label class="check"><span>📷 移軸微縮鏡頭效果</span><input id="tiltshift" type="checkbox" /></label>
+      </div>
+    </section>
+
+    <section id="panel-credits" class="panel">
+      <header><h2>製作名單</h2><button class="panel-close" aria-label="關閉">✕</button></header>
+      <div class="credits">
+        <p><b>沙堡物語 · Sandcastle Dreams</b></p>
+        <p>遊戲設計與程式<br /><span>Hank × Claude</span></p>
+        <p>美術圖像<br /><span>Higgsfield · GPT Image 2</span></p>
+        <p>3D 引擎<br /><span>Three.js</span></p>
+        <p>音樂與音效<br /><span>Web Audio 即時生成</span></p>
+        <p>靈感來源<br /><span>Sandcastle (Steam)</span></p>
+      </div>
+    </section>
+
+    <!-- in-game HUD -->
+    <div id="hud">
+      <aside id="goal-panel">
+        <div class="lvl-head">
+          <div id="lvl-num" class="lvl-num">1</div>
+          <div>
+            <div id="lvl-name" class="lvl-name"></div>
+            <div id="lvl-en" class="lvl-en"></div>
+          </div>
+        </div>
+        <ul id="goal-list"></ul>
+      </aside>
+
+      <div id="top-right">
+        <div id="tide-box">
+          <div class="tide-meter"><div id="tide-fill"></div></div>
+          <div class="tide-info">
+            <div class="tide-title">潮汐 · <b id="tide-state">低潮</b></div>
+            <div class="tide-progress"><div id="tide-prog"></div></div>
+            <button id="btn-tide"><img src="assets/icons/wave.png" alt="" />迎接漲潮</button>
+          </div>
+        </div>
+        <div class="hud-row">
+          <div class="treasure-pill" title="找到的寶藏"><img src="assets/icons/chest.png" alt="" /><span id="treasure-count">0 / 0</span></div>
+          <button id="btn-undo" class="icon-btn" title="復原 (Ctrl+Z)">↶</button>
+          <button id="btn-help" class="icon-btn" title="操作說明 (H)">?</button>
+          <button id="btn-hud-settings" class="icon-btn" title="設定">⚙</button>
+          <button id="btn-pause" class="icon-btn" title="選單 (Esc)">☰</button>
+        </div>
+      </div>
+
+      <div id="bottom">
+        <div id="decor-palette"></div>
+        <div id="tool-label"></div>
+        <div class="bottom-row">
+          <div id="brush-panel">
+            <label><span>大小</span><input id="brush-size" type="range" min="0.4" max="2.6" step="0.05" /><em id="brush-size-val"></em></label>
+            <label><span>力道</span><input id="brush-strength" type="range" min="0.2" max="2" step="0.05" /><em id="brush-strength-val"></em></label>
+          </div>
+          <div id="toolbar"></div>
+        </div>
+      </div>
+
+      <div id="tip"></div>
+    </div>
+
+    <div id="help">
+      <div class="help-card">
+        <h2>操作說明</h2>
+        <ul>
+          <li><kbd>左鍵</kbd> 使用工具（堆沙、挖掘、築牆…）</li>
+          <li><kbd>右鍵拖曳</kbd> 旋轉視角　<kbd>Shift</kbd>+<kbd>右鍵</kbd> 平移</li>
+          <li><kbd>滾輪</kbd> 縮放　<kbd>W A S D</kbd> 移動　<kbd>Q</kbd>/<kbd>E</kbd> 旋轉</li>
+          <li><kbd>1</kbd>–<kbd>9</kbd> 切換工具　<kbd>[</kbd> <kbd>]</kbd> 或 <kbd>Alt</kbd>+滾輪 調整筆刷大小</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> 復原　<kbd>Ctrl</kbd>+點擊 移除裝飾或旗幟</li>
+          <li><kbd>T</kbd> 迎接漲潮　<kbd>Esc</kbd> 暫停</li>
+        </ul>
+        <p>小訣竅：海浪會慢慢侵蝕沙子。城堡蓋得越高、牆越厚，就越能撐過漲潮！閃爍的光點下方可能埋著寶藏。</p>
+        <small>點擊任意處關閉</small>
+      </div>
+    </div>
+
+    <div id="pause" class="modal">
+      <div class="modal-card small">
+        <h2>暫停</h2>
+        <button id="btn-resume" class="menu-btn primary"><span>繼續建造</span></button>
+        <button id="btn-restart" class="menu-btn"><span>重新開始本關</span></button>
+        <button id="btn-pause-settings" class="menu-btn"><span>設定</span></button>
+        <button id="btn-to-menu" class="menu-btn"><span>回到主選單</span></button>
+      </div>
+    </div>
+
+    <div id="banner">
+      <div class="banner-num" id="banner-num"></div>
+      <h2 id="banner-name"></h2>
+      <div class="banner-en" id="banner-en"></div>
+      <p id="banner-blurb"></p>
+      <ul id="banner-goals"></ul>
+      <small>點擊開始建造</small>
+    </div>
+
+    <div id="treasure-modal" class="modal">
+      <div class="modal-card treasure">
+        <div class="rays"></div>
+        <div class="t-kicker">發現寶藏！</div>
+        <img id="treasure-img" alt="" />
+        <h2 id="treasure-name"></h2>
+        <p id="treasure-desc"></p>
+        <button id="btn-treasure-ok" class="menu-btn primary"><span>收進圖鑑</span></button>
+      </div>
+    </div>
+
+    <div id="complete-modal" class="modal">
+      <div class="modal-card complete">
+        <div id="complete-img" class="complete-img"><div class="complete-title">關卡完成！</div></div>
+        <div class="complete-body">
+          <div id="complete-level" class="complete-level"></div>
+          <div class="stats">
+            <div><b id="stat-towers">0</b><span>塔樓</span></div>
+            <div><b id="stat-wall">0</b><span>城牆</span></div>
+            <div><b id="stat-treasure">0</b><span>寶藏</span></div>
+            <div><b id="stat-decor">0</b><span>裝飾</span></div>
+          </div>
+          <div class="complete-actions">
+            <button id="btn-next" class="menu-btn primary"><span>下一關</span></button>
+            <button id="btn-keep" class="menu-btn"><span>繼續自由建造</span></button>
+            <button id="btn-complete-menu" class="menu-btn"><span>主選單</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section id="ending">
+      <div class="ending-bg"></div>
+      <div class="ending-shade"></div>
+      <div class="ending-content">
+        <h1>謝謝你，<br />為這片海灘留下了夢想的城堡</h1>
+        <div class="roll">
+          <p>五片海灘，無數座沙堡</p>
+          <p>潮水來了又去，帶走了沙子</p>
+          <p>卻帶不走你堆沙時的那份安靜與快樂</p>
+          <p class="gap">沙堡物語 · Sandcastle Dreams</p>
+          <p>設計與程式　Hank × Claude</p>
+          <p>美術圖像　Higgsfield · GPT Image 2</p>
+          <p>引擎　Three.js　·　音樂　Web Audio</p>
+        </div>
+        <button id="btn-ending-menu" class="menu-btn primary"><span>回到主選單</span></button>
+      </div>
+    </section>
+
+    <div id="toasts"></div>
+
+    <div id="fader">
+      <div id="fader-title"></div>
+      <div id="fader-sub"></div>
+      <div id="fader-wave"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
