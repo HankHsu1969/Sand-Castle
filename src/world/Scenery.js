@@ -3,83 +3,9 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { HALF } from '../core/config.js';
 import { mulberry32, makeSimplex, fbm } from '../core/noise.js';
 import { withFog } from './fog.js';
+import PLANTS from './plants.json';
 
 export const sceneryTime = { value: 0 };
-
-// ---------- procedural textures ----------
-function frondTexture() {
-  const c = document.createElement('canvas');
-  c.width = 256; c.height = 512;
-  const g = c.getContext('2d');
-  const rand = mulberry32(7);
-  g.clearRect(0, 0, 256, 512);
-  for (let y = 6; y < 500; y += 5) {
-    const t = y / 512;
-    const len = 122 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.05 + 0.02)), 0.6);
-    for (const side of [-1, 1]) {
-      const hue = 85 + rand() * 25;
-      const light = 26 + rand() * 16 + t * 10;
-      g.strokeStyle = `hsl(${hue}, ${48 + rand() * 18}%, ${light}%)`;
-      g.lineWidth = 3.2 - t * 1.4;
-      g.lineCap = 'round';
-      g.beginPath();
-      g.moveTo(128, y);
-      const ex = 128 + side * len * (0.9 + rand() * 0.15);
-      const ey = y + 24 + rand() * 12;
-      g.quadraticCurveTo(128 + side * len * 0.5, y + 4, ex, ey);
-      g.stroke();
-    }
-  }
-  g.strokeStyle = '#6b6a2f';
-  g.lineWidth = 5;
-  g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 512); g.stroke();
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
-
-function trunkTexture() {
-  const c = document.createElement('canvas');
-  c.width = 64; c.height = 256;
-  const g = c.getContext('2d');
-  const rand = mulberry32(3);
-  for (let y = 0; y < 256; y++) {
-    const band = (y % 32) / 32;
-    const l = 30 + 18 * Math.pow(Math.sin(band * Math.PI), 0.5) + rand() * 6;
-    g.fillStyle = `hsl(32, 22%, ${l}%)`;
-    g.fillRect(0, y, 64, 1);
-  }
-  for (let k = 0; k < 400; k++) {
-    g.fillStyle = `rgba(40,30,20,${rand() * 0.25})`;
-    g.fillRect(rand() * 64, rand() * 256, 1 + rand() * 4, 1);
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
-}
-
-function grassTexture() {
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
-  const g = c.getContext('2d');
-  const rand = mulberry32(11);
-  for (let i = 0; i < 38; i++) {
-    const x = 10 + rand() * 108;
-    const h = 60 + rand() * 66;
-    const lean = (rand() - 0.5) * 40;
-    g.strokeStyle = `hsl(${70 + rand() * 30}, ${35 + rand() * 25}%, ${35 + rand() * 25}%)`;
-    g.lineWidth = 2 + rand() * 1.5;
-    g.beginPath();
-    g.moveTo(x, 128);
-    g.quadraticCurveTo(x + lean * 0.3, 128 - h * 0.6, x + lean, 128 - h);
-    g.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
 
 // ---------- palm ----------
 function buildPalmVariant(rand) {
@@ -105,7 +31,7 @@ function buildPalmVariant(rand) {
       const dir = new THREE.Vector3().addScaledVector(N, nx).addScaledVector(B, ny);
       pos.push(p.x + dir.x * r, p.y + dir.y * r, p.z + dir.z * r);
       nrm.push(dir.x, dir.y, dir.z);
-      uv.push(k / radial, t * height * 0.8);
+      uv.push((k / radial) * 2, (t * height) / 3);
     }
   }
   for (let s = 0; s < segs; s++) {
@@ -120,17 +46,14 @@ function buildPalmVariant(rand) {
   trunk.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   trunk.setIndex(idx);
   const top = curve.getPointAt(1);
-  const parts = [trunk];
-  for (let k = 0; k < 4; k++) {
-    const nut = new THREE.SphereGeometry(0.14, 10, 8);
-    const a = k * 1.7 + rand();
-    nut.translate(top.x + Math.cos(a) * 0.2, top.y - 0.22 - rand() * 0.1, top.z + Math.sin(a) * 0.2);
-    // map coconuts onto a dark band of the trunk texture
-    const uva = nut.attributes.uv.array;
-    for (let q = 0; q < uva.length; q += 2) { uva[q] *= 0.2; uva[q + 1] = 0.02; }
-    parts.push(nut);
+  const nuts = [];
+  for (let k = 0; k < 5; k++) {
+    const nut = new THREE.SphereGeometry(0.15, 12, 10);
+    nut.scale(1, 1.12, 1);
+    const a = k * 1.3 + rand();
+    nut.translate(top.x + Math.cos(a) * 0.22, top.y - 0.25 - rand() * 0.12, top.z + Math.sin(a) * 0.22);
+    nuts.push(nut);
   }
-  trunk = mergeGeometries(parts);
 
   // fronds
   const fronds = [];
@@ -171,7 +94,7 @@ function buildPalmVariant(rand) {
     g.computeVertexNormals();
     fronds.push(g);
   }
-  return { trunk, fronds: mergeGeometries(fronds), height };
+  return { trunk, nuts: mergeGeometries(nuts), fronds: mergeGeometries(fronds), height };
 }
 
 function smoothIco(detail) {
@@ -199,26 +122,6 @@ function noisyRock(seed, detail = 4) {
     col[i * 3] = (0.5 * shade) * (0.7 + 0.3 * wetBand);
     col[i * 3 + 1] = (0.47 * shade) * (0.72 + 0.28 * wetBand);
     col[i * 3 + 2] = (0.43 * shade) * (0.75 + 0.25 * wetBand);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function bushGeometry(seed) {
-  const geo = smoothIco(2);
-  const n = makeSimplex(seed);
-  const p = geo.attributes.position;
-  const col = new Float32Array(p.count * 3);
-  const v = new THREE.Vector3();
-  for (let i = 0; i < p.count; i++) {
-    v.fromBufferAttribute(p, i);
-    const d = 1 + 0.3 * n(v.x * 2.2, v.y * 2.2 + v.z);
-    v.multiplyScalar(d);
-    v.y = v.y * 0.65 + 0.3;
-    p.setXYZ(i, v.x * 1.3, v.y, v.z * 1.3);
-    const l = 0.6 + 0.4 * (v.y + 0.4);
-    col[i * 3] = 0.16 * l; col[i * 3 + 1] = 0.36 * l; col[i * 3 + 2] = 0.12 * l;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.computeVertexNormals();
@@ -261,7 +164,6 @@ export class Scenery {
     const rand = mulberry32(42);
     this.palms = [0, 1, 2, 3].map(() => buildPalmVariant(rand));
     this.rockGeos = [noisyRock(5), noisyRock(9), noisyRock(13, 3)];
-    this.bushGeos = [bushGeometry(2), bushGeometry(4)];
     this.coralGeos = [coralGeometry(mulberry32(1)), coralGeometry(mulberry32(2))];
 
     const sway = (strength) => (shader) => {
@@ -291,25 +193,44 @@ export class Scenery {
         );
     };
 
-    this.trunkMat = withFog(new THREE.MeshStandardMaterial({ map: trunkTexture(), roughness: 0.92 }), 'palm-trunk', sway('trunk'));
+    const tl = new THREE.TextureLoader();
+    const tex = (url, srgb = true, repeat = false) => {
+      const t = tl.load(url);
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 8;
+      return t;
+    };
+    this.trunkMat = withFog(new THREE.MeshStandardMaterial({
+      map: tex('assets/img/palm_bark.jpg', true, true),
+      normalMap: tex('assets/img/palm_bark_n.jpg', false, true),
+      normalScale: new THREE.Vector2(1.2, 1.2),
+      roughness: 0.95,
+    }), 'palm-trunk', sway('trunk'));
+    this.nutMat = withFog(new THREE.MeshStandardMaterial({ color: 0x6b5a2a, roughness: 0.55 }), 'palm-trunk', sway('trunk'));
     this.frondMat = withFog(new THREE.MeshStandardMaterial({
-      map: frondTexture(), alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.75,
+      map: tex('assets/img/palm_frond.png'), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6,
     }), 'palm-frond', sway('frond'));
     this.rockMat = withFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 }), 'rock');
-    this.bushMat = withFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), 'bush');
-    this.grassMat = withFog(new THREE.MeshStandardMaterial({
-      map: grassTexture(), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.8,
-    }), 'grass', sway('grass'));
     this.coralMat = withFog(new THREE.MeshStandardMaterial({ roughness: 0.7 }), 'coral');
 
-    const gq = [];
-    for (let k = 0; k < 3; k++) {
-      const q = new THREE.PlaneGeometry(1.2, 0.9);
-      q.translate(0, 0.45, 0);
-      q.rotateY((k * Math.PI) / 3);
-      gq.push(q);
-    }
-    this.grassGeo = mergeGeometries(gq);
+    // beach plants: photographic sprites on three crossed cards, lit from above
+    this.plants = PLANTS.map((pl) => {
+      const cards = [];
+      for (let k = 0; k < 3; k++) {
+        const q = new THREE.PlaneGeometry(pl.aspect, 1, 1, 3);
+        q.translate(0, 0.5, 0);
+        q.rotateY((k * Math.PI) / 3);
+        cards.push(q);
+      }
+      const geo = mergeGeometries(cards);
+      const n = geo.attributes.normal;
+      for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
+      const mat = withFog(new THREE.MeshStandardMaterial({
+        map: tex(`assets/plants/${pl.name}.png`), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75,
+      }), 'grass', sway('grass'));
+      return { ...pl, geo, mat };
+    });
 
     this.boat = this.buildBoat();
     this.boat.visible = false;
@@ -402,7 +323,9 @@ export class Scenery {
     }
     byVariant.forEach((list, v) => {
       this.addInstanced(this.palms[v].trunk, this.trunkMat, list);
-      const tint = list.map(() => new THREE.Color().setHSL(0.24 + rand() * 0.07, 0.35 + rand() * 0.3, 0.42 + rand() * 0.14).multiplyScalar(2.1));
+      this.addInstanced(this.palms[v].nuts, this.nutMat, list);
+      // gentle per-tree variation: some fresher green, some sun-bleached
+      const tint = list.map(() => new THREE.Color(1, 1, 1).lerp(new THREE.Color(rand() < 0.5 ? 0xd8f0a0 : 0xfff0b0), rand() * 0.45).multiplyScalar(0.92 + rand() * 0.18));
       this.addInstanced(this.palms[v].fronds, this.frondMat, list, { colors: tint });
     });
 
@@ -417,16 +340,34 @@ export class Scenery {
     }
     rocksBy.forEach((list, v) => this.addInstanced(this.rockGeos[v], this.rockMat, list));
 
-    // bushes and grass on the dunes behind the beach
-    const bushSpots = scatter(70, 4000, nearRegion, (x, z, h) => outsidePlay(x, z, 5) && h > 2.0 && h < 7 && Math.hypot(x, z) < 90);
-    if (cfg.islands) bushSpots.push(...scatter(40, 2000, islandRegion, (x, z, h) => h > 1.8));
-    const bushBy = [[], []];
-    for (const [x, z, h] of bushSpots) bushBy[Math.floor(rand() * 2)].push(mat4(x, h - 0.2, z, rand() * 6.28, 0.6 + rand() * 1.1));
-    bushBy.forEach((list, v) => this.addInstanced(this.bushGeos[v], this.bushMat, list));
-
-    const grassSpots = scatter(260, 6000, () => [(rand() - 0.5) * 110, -10 + rand() * 80],
-      (x, z, h) => outsidePlay(x, z, 2) && h > 1.3 && h < 5 && Math.hypot(x, z) < 70);
-    this.addInstanced(this.grassGeo, this.grassMat, grassSpots.map(([x, z, h]) => mat4(x, h - 0.05, z, rand() * 6.28, 0.7 + rand() * 0.8)), { shadow: false });
+    // beach plants: tall grasses near the sand line, shrubs and ferns further up
+    const dry = level.tide.high + 0.35;
+    const kinds = {
+      grass: { w: 26, s: [0.7, 1.2] }, seaoats: { w: 16, s: [0.9, 1.5] }, reed: { w: 9, s: [1.2, 1.9] },
+      purslane: { w: 12, s: [0.35, 0.6] }, morningglory: { w: 12, s: [0.4, 0.7] }, fern: { w: 10, s: [0.7, 1.2] },
+      shrub: { w: 12, s: [0.8, 1.6] }, sprout: { w: 6, s: [1.0, 1.8] },
+    };
+    const total = Object.values(kinds).reduce((a, k) => a + k.w, 0);
+    const pickKind = () => {
+      let r = rand() * total;
+      for (const [k, v] of Object.entries(kinds)) { r -= v.w; if (r <= 0) return k; }
+      return 'grass';
+    };
+    const byPlant = Object.fromEntries(this.plants.map((p) => [p.name, []]));
+    const plantSpots = scatter(520, 9000, () => [(rand() - 0.5) * 130, -14 + rand() * 90],
+      (x, z, h) => outsidePlay(x, z, 1.5) && h > dry && h < 7 && slope(x, z) < 0.55 && Math.hypot(x, z) < 80);
+    if (cfg.islands) plantSpots.push(...scatter(160, 3000, islandRegion, (x, z, h) => h > 1.0));
+    for (const [x, z, h] of plantSpots) {
+      // clumps: a few plants of one kind together
+      const kind = pickKind();
+      const n = 1 + Math.floor(rand() * 3);
+      for (let k = 0; k < n; k++) {
+        const ox = x + (rand() - 0.5) * 1.6, oz = z + (rand() - 0.5) * 1.6;
+        const [a, b] = kinds[kind].s;
+        byPlant[kind].push(mat4(ox, heightFn(ox, oz) - 0.04, oz, rand() * 6.28, a + rand() * (b - a)));
+      }
+    }
+    for (const p of this.plants) this.addInstanced(p.geo, p.mat, byPlant[p.name], { shadow: p.name === 'shrub' || p.name === 'sprout' || p.name === 'reed' });
 
     // coral heads in the lagoon
     if (cfg.coral) {

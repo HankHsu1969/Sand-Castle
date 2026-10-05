@@ -68,9 +68,14 @@ export class Game {
     const sandMap = tl.load('assets/img/sand_albedo.jpg');
     sandMap.colorSpace = THREE.SRGBColorSpace;
     const sandNrm = tl.load('assets/img/sand_normal.jpg');
-    for (const t of [sandMap, sandNrm]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; }
+    const ripple = tl.load('assets/img/sand_ripple.jpg');
+    ripple.colorSpace = THREE.SRGBColorSpace;
+    const rippleN = tl.load('assets/img/sand_ripple_n.jpg');
+    for (const t of [sandMap, sandNrm, ripple, rippleN]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; }
     sandUniforms.uSandMap.value = sandMap;
     sandUniforms.uSandNormal.value = sandNrm;
+    sandUniforms.uRipple.value = ripple;
+    sandUniforms.uRippleN.value = rippleN;
 
     this.sandMat = createSandMaterial();
     this.terrain = new Terrain(this.sandMat);

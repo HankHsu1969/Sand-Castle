@@ -8,6 +8,8 @@ import { injectFog } from './fog.js';
 export const sandUniforms = {
   uSandMap: { value: null },
   uSandNormal: { value: null },
+  uRipple: { value: null },
+  uRippleN: { value: null },
   uSim: { value: null },
   uGridHalf: { value: HALF },
   uSimScale: { value: 1 / (2 * M * S) },
@@ -32,12 +34,13 @@ export function createSandMaterial() {
     Object.assign(shader.uniforms, sandUniforms);
     injectFog(shader);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNrm;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNrm;\nattribute float aBuilt;\nvarying float vBuilt;')
       .replace(
         '#include <project_vertex>',
         `#include <project_vertex>
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        vWNrm = normalize(mat3(modelMatrix) * objectNormal);`
+        vWNrm = normalize(mat3(modelMatrix) * objectNormal);
+        vBuilt = aBuilt;`
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -45,6 +48,8 @@ export function createSandMaterial() {
         `#include <common>
         uniform sampler2D uSandMap;
         uniform sampler2D uSandNormal;
+        uniform sampler2D uRipple;
+        uniform sampler2D uRippleN;
         uniform sampler2D uSim;
         uniform float uGridHalf;
         uniform float uSimScale;
@@ -58,8 +63,9 @@ export function createSandMaterial() {
         uniform vec3 uSunDirW;
         varying vec3 vWPos;
         varying vec3 vWNrm;
+        varying float vBuilt;
         ${NOISE_GLSL}
-        float gWet; float gDepth; vec3 gBw;`
+        float gWet; float gDepth; vec3 gBw; float gNatural; vec2 gRipUv;`
       )
       .replace(
         '#include <map_fragment>',
@@ -68,8 +74,13 @@ export function createSandMaterial() {
         gBw /= (gBw.x + gBw.y + gBw.z + 1e-4);
         const float TS = 0.42;
         vec3 sx = texture2D(uSandMap, vWPos.zy * TS).rgb;
-        vec3 sy = texture2D(uSandMap, vWPos.xz * TS).rgb;
         vec3 sz = texture2D(uSandMap, vWPos.xy * TS).rgb;
+        // untouched beach shows wind ripples; built or dug sand is smooth and packed
+        gNatural = 1.0 - clamp(vBuilt, 0.0, 1.0);
+        float ang = sNoise(vWPos.xz * 0.025) * 1.4;
+        mat2 rot = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+        gRipUv = rot * vWPos.xz * 0.3;
+        vec3 sy = mix(texture2D(uSandMap, vWPos.xz * TS).rgb, texture2D(uRipple, gRipUv).rgb, gNatural * 0.9);
         vec3 sandCol = sx * gBw.x + sy * gBw.y + sz * gBw.z;
         float big = sNoise(vWPos.xz * 0.09) * 0.6 + sNoise(vWPos.xz * 0.31 + 7.0) * 0.4;
         sandCol *= mix(0.88, 1.08, big);
@@ -104,7 +115,9 @@ export function createSandMaterial() {
           vec3 d1 = texture2D(uSandNormal, vWPos.xz * 0.85).xyz * 2.0 - 1.0;
           vec3 d2 = texture2D(uSandNormal, vWPos.xz * 0.21 + 0.37).xyz * 2.0 - 1.0;
           float str = 0.4 * gBw.y * (1.0 - 0.55 * gWet);
-          vec3 wn = normalize(vWNrm + vec3(d1.x + d2.x * 0.7, 0.0, d1.y + d2.y * 0.7) * str);
+          vec3 rn = texture2D(uRippleN, gRipUv).xyz * 2.0 - 1.0;
+          float rs = 0.75 * gNatural * gBw.y * (1.0 - 0.6 * gWet) * (1.0 - smoothstep(0.0, 0.2, gDepth) * 0.5);
+          vec3 wn = normalize(vWNrm + vec3(d1.x + d2.x * 0.7, 0.0, d1.y + d2.y * 0.7) * str + vec3(rn.x, 0.0, rn.y) * rs);
           normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
         }`
       )
@@ -132,7 +145,7 @@ export function createSandMaterial() {
         #include <opaque_fragment>`
       );
   };
-  mat.customProgramCacheKey = () => 'sand-v1';
+  mat.customProgramCacheKey = () => 'sand-v2';
   return mat;
 }
 
@@ -169,9 +182,12 @@ export class Terrain {
     this.posAttr = new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage);
     this.nrmAttr = new THREE.BufferAttribute(this.nrm, 3).setUsage(THREE.DynamicDrawUsage);
     this.colAttr = new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage);
+    this.built = new Float32Array(n);
+    this.builtAttr = new THREE.BufferAttribute(this.built, 1).setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('position', this.posAttr);
     geo.setAttribute('normal', this.nrmAttr);
     geo.setAttribute('color', this.colAttr);
+    geo.setAttribute('aBuilt', this.builtAttr);
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), W);
     geo.boundingBox = new THREE.Box3(new THREE.Vector3(-HALF, FLOOR, -HALF), new THREE.Vector3(HALF, 30, HALF));
 
@@ -224,14 +240,14 @@ export class Terrain {
     edges.forEach(([i, j]) => push(i, j));
     const pos = new Float32Array(verts.length * 2 * 3);
     const nrm = new Float32Array(verts.length * 2 * 3);
-    const col = new Float32Array(verts.length * 2 * 3).fill(0.85);
+    const col = new Float32Array(verts.length * 2 * 3).fill(1);
     verts.forEach((v, k) => {
-      pos.set(v, k * 6);
+      // tucked just under the edge and lit like the ground, so where the
+      // coarser surrounding terrain dips a hair lower no dark seam shows
+      pos.set([v[0], v[1] - 0.02, v[2]], k * 6);
       pos.set([v[0], FLOOR - 4, v[2]], k * 6 + 3);
-      const ox = Math.abs(v[0]) > HALF - 1e-4 ? Math.sign(v[0]) : 0;
-      const oz = Math.abs(v[2]) > HALF - 1e-4 ? Math.sign(v[2]) : 0;
-      nrm.set([ox, 0.3, oz], k * 6);
-      nrm.set([ox, 0.3, oz], k * 6 + 3);
+      nrm.set([0, 1, 0], k * 6);
+      nrm.set([0, 1, 0], k * 6 + 3);
     });
     const idx = [];
     for (let k = 0; k < verts.length - 1; k++) {
@@ -323,19 +339,25 @@ export class Terrain {
             if (v > 0) occ += v > 1.6 ? 1.6 : v;
           }
         }
-        const ao = Math.max(0.42, 1 - occ * 0.045);
+        // no occlusion darkening in the locked border band (its samples are clamped)
+        const ao = 1 - (1 - Math.max(0.42, 1 - occ * 0.045)) * this.mask[k];
         col[k * 3] = ao; col[k * 3 + 1] = ao; col[k * 3 + 2] = ao;
+        const disturbed = Math.abs(hc - this.h0[k]) / 0.1;
+        this.built[k] = disturbed > 1 ? 1 : disturbed;
       }
     }
     const toHalf = THREE.DataUtils.toHalfFloat;
     for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) this.heightData[j * N + i] = toHalf(h[j * N + i]);
     this.heightTex.needsUpdate = true;
     const start = b0 * N * 3, count = (b1 - b0 + 1) * N * 3;
+    // ranges accumulate until the next upload (three.js clears them after
+    // uploading), so several flushes between renders never lose an edit
     for (const attr of [this.posAttr, this.nrmAttr, this.colAttr]) {
-      attr.clearUpdateRanges();
       attr.addUpdateRange(start, count);
       attr.needsUpdate = true;
     }
+    this.builtAttr.addUpdateRange(b0 * N, (b1 - b0 + 1) * N);
+    this.builtAttr.needsUpdate = true;
     this.version++;
     return [a0, b0, a1, b1];
   }

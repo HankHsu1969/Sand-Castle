@@ -152,12 +152,13 @@ export class Tools {
       const h = this.terrain.h;
       for (let q = 0; q < st.cells.length; q++) {
         const k = st.cells[q];
-        const v = st.snap[q] + (st.target[q] - st.snap[q]) * e;
-        h[k] = Math.max(h[k], Math.min(v, st.target[q] + 0.08));
+        const up = st.target[q] >= st.snap[q];
+        const v = st.snap[q] + (st.target[q] - st.snap[q]) * (up ? e : Math.min(1, e));
+        h[k] = up ? Math.min(v, st.target[q] + 0.08) : v;
       }
       this.terrain.markDirty(st.rect[0], st.rect[1], st.rect[2], st.rect[3]);
       if (st.t >= st.dur) {
-        for (let q = 0; q < st.cells.length; q++) h[st.cells[q]] = Math.max(h[st.cells[q]], st.target[q]);
+        for (let q = 0; q < st.cells.length; q++) h[st.cells[q]] = st.target[q];
         this.stamps.splice(i, 1);
         if (st.onDone) st.onDone();
       }
@@ -229,7 +230,7 @@ export class Tools {
   towerProfile(dx, dz, R) {
     const { H, R1, merlons } = this.towerDims(R);
     const rho = Math.hypot(dx, dz);
-    if (rho > R * 1.32) return null;
+    if (rho > R) return 0;
     // bucket body: straight-ish tapered sides with softly rounded edges
     const side = 1 - smoothstep(R1 - 0.04 * R, R + 0.02 * R, rho);
     let h = H * side;
@@ -246,28 +247,36 @@ export class Tools {
     // shallow dish in the middle of the top
     const inner = 1 - smoothstep(R1 - rim - 0.1, R1 - rim + 0.02, rho);
     h -= inner * (R * 0.05);
-    // loose sand at the foot
-    if (rho > R * 0.95) h = Math.max(h, 0.15 * R * Math.pow(1 - smoothstep(R * 0.95, R * 1.32, rho), 2));
     return h;
   }
 
   stampTower(x, z, R, dur = 0.45, onDone = null, silent = false) {
     const t = this.terrain;
-    const reach = R * 1.3;
+    const pad = R * 1.35; // ground around the bucket is levelled flat
     // base: average ground under the bucket
     let sum = 0, n = 0;
-    this.forRegion(x, z, R * 0.85, (k, px, pz) => {
-      if (Math.hypot(px - x, pz - z) < R * 0.85) { sum += t.h[k]; n++; }
+    this.forRegion(x, z, R * 0.9, (k, px, pz) => {
+      if (Math.hypot(px - x, pz - z) < R * 0.9) { sum += t.h[k]; n++; }
     });
     if (!n) return;
     const base = sum / n;
     const cells = [], target = [], snap = [];
     let i0 = N, j0 = N, i1 = 0, j1 = 0;
-    this.forRegion(x, z, reach, (k, px, pz, i, j) => {
-      const p = this.towerProfile(px - x, pz - z, R);
-      if (p === null) return;
-      const v = base + p * t.mask[k] + (1 - t.mask[k]) * (t.h[k] - base);
-      if (v <= t.h[k]) return;
+    this.forRegion(x, z, pad, (k, px, pz, i, j) => {
+      const rho = Math.hypot(px - x, pz - z);
+      if (rho > pad) return;
+      const m = t.mask[k];
+      let v;
+      if (rho <= R) {
+        // the bucket body sits on a perfectly level footprint
+        v = base + this.towerProfile(px - x, pz - z, R);
+      } else {
+        // a level apron that eases back into the surrounding sand
+        const w = smoothstep(R, pad, rho);
+        v = base * (1 - w) + t.h[k] * w;
+      }
+      v = t.h[k] + (v - t.h[k]) * m;
+      if (Math.abs(v - t.h[k]) < 1e-4) return;
       cells.push(k); target.push(v); snap.push(t.h[k]);
       i0 = Math.min(i0, i); j0 = Math.min(j0, j); i1 = Math.max(i1, i); j1 = Math.max(j1, j);
     });

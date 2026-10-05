@@ -34,7 +34,7 @@ function makeDetail(seed) {
     dune: (x, z) => 0.7 + 0.9 * fbm(n1, x * 0.035, z * 0.035, 4),
     // fine variation + wave ripples on the wet beach
     micro: (x, z, h) => {
-      let v = 0.05 * fbm(n2, x * 0.18, z * 0.18, 3);
+      let v = 0.025 * fbm(n2, x * 0.18, z * 0.18, 3);
       if (h < 0.35) {
         const w = smoothstep(0.35, -0.5, h);
         v += w * 0.035 * Math.sin(z * 2.6 + 0.9 * Math.sin(x * 0.35) + n1(x * 0.1, z * 0.1) * 2.0);
@@ -76,7 +76,10 @@ export const LEVELS = [
         const shore = -5 - 0.011 * x * x;
         const slope = -0.022 * x;
         const d = (z - shore) / Math.sqrt(1 + slope * slope);
-        let h = beachHeight(d, det.dune(x, z));
+        // a broad, flat sandy terrace where you build; dunes only further back
+        const play = 1 - smoothstep(18, 32, Math.max(Math.abs(x), z));
+        let h = beachHeight(d, det.dune(x, z) * (1 - play));
+        if (d > 0) h = h * (1 - play) + Math.min(h, 0.55 + 0.02 * d) * play;
         // rocky headlands far to the sides
         const head = smoothstep(34, 70, Math.abs(x)) * smoothstep(-70, -10, z);
         h += head * (1.5 + 2.5 * det.dune(x * 2, z * 2));

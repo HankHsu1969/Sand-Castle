@@ -1,0 +1,34 @@
+[
+  {
+    "name": "grass",
+    "aspect": 0.877
+  },
+  {
+    "name": "seaoats",
+    "aspect": 0.93
+  },
+  {
+    "name": "fern",
+    "aspect": 1.267
+  },
+  {
+    "name": "purslane",
+    "aspect": 1.969
+  },
+  {
+    "name": "morningglory",
+    "aspect": 1.875
+  },
+  {
+    "name": "shrub",
+    "aspect": 1.306
+  },
+  {
+    "name": "reed",
+    "aspect": 0.787
+  },
+  {
+    "name": "sprout",
+    "aspect": 0.85
+  }
+]

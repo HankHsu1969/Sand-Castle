@@ -2,6 +2,7 @@
 // a generative "beach lounge" score, ocean ambience and sound effects.
 
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const OCEAN_TRIM = Math.pow(10, -4 / 20); // surf sits 4 dB below its original level
 
 // Chord progressions per track (MIDI notes) plus melody scale and tempo.
 const TRACKS = {
@@ -365,7 +366,7 @@ export class AudioEngine {
     };
     layer(this.samples.ocean, 1.0, 0);
     layer(this.samples.ocean2, 0.55, 11);
-    this.oceanGain.gain.setTargetAtTime(0.85, t, 1.5);
+    this.oceanGain.gain.setTargetAtTime(0.85 * OCEAN_TRIM, t, 1.5);
   }
 
   setWavePeriod() { /* the recorded surf keeps its own natural rhythm */ }
@@ -377,7 +378,7 @@ export class AudioEngine {
     if (Math.abs(v - this.tideIntensity) < 0.02) return;
     this.tideIntensity = v;
     const t = this.ctx.currentTime;
-    this.oceanGain.gain.setTargetAtTime(0.85 + v * 0.55, t, 0.8);
+    this.oceanGain.gain.setTargetAtTime((0.85 + v * 0.55) * OCEAN_TRIM, t, 0.8);
     this.oceanFilter.frequency.setTargetAtTime(9000 + v * 7000, t, 0.8);
   }
 
@@ -408,7 +409,7 @@ export class AudioEngine {
     const tide = this.tideIntensity || 0;
     if (t > this.nextWash) {
       const key = Math.random() < 0.5 ? 'wash1' : 'wash2';
-      this.playSample(key, { gain: 0.16 + tide * 0.4 + Math.random() * 0.08, rate: 0.92 + Math.random() * 0.14, pan: (Math.random() - 0.5) * 0.9, bus: this.ambBus });
+      this.playSample(key, { gain: (0.16 + tide * 0.4 + Math.random() * 0.08) * OCEAN_TRIM, rate: 0.92 + Math.random() * 0.14, pan: (Math.random() - 0.5) * 0.9, bus: this.ambBus });
       this.nextWash = t + (tide > 0.2 ? 3.5 + Math.random() * 3 : 11 + Math.random() * 9);
     }
     if (t > this.nextGull) {

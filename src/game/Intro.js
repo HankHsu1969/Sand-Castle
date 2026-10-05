@@ -5,12 +5,12 @@ import * as THREE from 'three';
 const KEYS = [
   { t: 0, pos: [-34, 30, -78], look: [30, 10, -420] },
   { t: 4.2, pos: [-18, 13, -44], look: [-2, 2, -12] },
-  { t: 7.6, pos: [7, 4.2, -15], look: [0, 1.6, 3] },
-  { t: 10.6, pos: [16, 7.5, 15], look: [0, 1.8, 3] },
-  { t: 13.0, pos: [0, 7.2, 21.5], look: [0, 5.3, 2.8] },
+  { t: 7.6, pos: [7, 3.2, -15], look: [0, 0.6, 2] },
+  { t: 10.6, pos: [16, 6.0, 14], look: [0, 0.8, 0] },
+  { t: 13.0, pos: [0, 7.2, 21.5], look: [0, 4.0, 0] },
 ];
 const DURATION = 13.0;
-const CENTER = new THREE.Vector3(0, 1.9, 2.8);
+const CENTER = new THREE.Vector3(0, 0.6, 0);
 
 export class Intro {
   constructor(game) {
@@ -60,7 +60,7 @@ export class Intro {
     this.t = 0;
     this.done = false;
     this.buildTime = 0;
-    this.queue = this.castlePlan();
+    this.queue = [];
     this.game.ui.introStart();
     this.titleShown = false;
   }
@@ -123,7 +123,7 @@ export class Intro {
   }
 
   buildCastleInstant() {
-    this.runQuietly(this.castlePlan());
+    // the title beach stays a clean, flat stretch of sand
     this.queue = [];
   }
 
