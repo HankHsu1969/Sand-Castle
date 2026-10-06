@@ -508,8 +508,8 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 7px; background: #
   .menu-btn img { width: 30px; height: 30px; }
 }
 @media (max-width: 1240px) {
-  .tool { width: 62px; height: 72px; }
-  .tool img { width: 44px; height: 44px; }
+  .tool { width: 58px; height: 70px; }
+  .tool img { width: 42px; height: 42px; }
 }
 @media (max-width: 960px) {
   .bottom-row { flex-direction: column-reverse; align-items: center; gap: 6px; }

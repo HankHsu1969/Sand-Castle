@@ -13,7 +13,8 @@ import { Critters } from '../world/Critters.js';
 import { Marine } from '../world/Marine.js';
 import { Landmarks } from '../world/Landmarks.js';
 import { makeDecor, makeFlag, makeChest, makeCrabHome, makeMarker, propTime } from '../world/Props.js';
-import { Tools } from './Tools.js';
+import { Tools, TOOLS } from './Tools.js';
+import { Sculpt } from '../world/Sculpt.js';
 import { Goals } from './Goals.js';
 import { Intro } from './Intro.js';
 import { Post } from '../fx/Post.js';
@@ -89,6 +90,9 @@ export class Game {
     sandUniforms.uSim.value = this.sim.simTex;
     this.scene.add(this.sim.mesh);
     this.erosion = new Erosion(this.terrain, this.sim);
+    this.sculpt = new Sculpt(this.scene, this.sandMat, this.terrain);
+    // sculptures are solid ground for the water too
+    this.sculpt.onTop = (rect) => this.sim.syncGround(rect);
 
     this.scenery = new Scenery(this.scene);
     this.sand = new Particles(this.scene, { max: 2500 });
@@ -252,6 +256,7 @@ export class Game {
     const heightFn = level.build();
     this.heightFn = heightFn;
     this.terrain.load(heightFn);
+    this.sculpt.clear();
     this.env.applyLevel(level);
     this.post.setExposure(level.sky.exposure);
     this.env.buildOuter(heightFn, this.sandMat);
@@ -345,10 +350,12 @@ export class Game {
     this.pushUndo();
     const obj = makeDecor(type);
     const p = { kind: 'decor', type, x: hit.x, z: hit.z, rot: Math.random() * Math.PI * 2, scale: 0.85 + Math.random() * 0.4, obj };
+    // stuck onto a sculpture: keep the exact spot and the way the surface faces there
+    if (hit.sculpt) { p.sy = hit.y; p.sn = hit.normal.clone(); }
     const view = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
     if (obj.userData.wall) {
       // doors and windows stick to the face of a wall, looking outward
-      const n = this.terrain.normalAt(hit.x, hit.z);
+      const n = hit.sculpt ? hit.normal : this.terrain.normalAt(hit.x, hit.z);
       const hor = Math.hypot(n.x, n.z);
       p.rot = hor > 0.35 ? Math.atan2(n.x, n.z) : Math.atan2(-view.x, -view.z);
       p.y0 = hit.y !== undefined && hit.y !== 0 ? hit.y : this.terrain.heightAt(hit.x, hit.z);
@@ -380,6 +387,7 @@ export class Game {
     this.pushUndo();
     const obj = makeFlag(this.flagColor++);
     const p = { kind: 'flag', type: 'flag', x: hit.x, z: hit.z, rot: Math.random() * Math.PI * 2, scale: 1, obj, fallen: false };
+    if (hit.sculpt) p.sy = hit.y;
     this.scene.add(obj);
     this.props.push(p);
     this.updateProp(p);
@@ -446,7 +454,7 @@ export class Game {
 
   updateProp(p) {
     const t = this.terrain;
-    const y = t.heightAt(p.x, p.z);
+    const y = p.sy !== undefined ? p.sy : t.heightAt(p.x, p.z);
     const o = p.obj;
     o.position.set(p.x, y - 0.01, p.z);
     if (o.userData.wall) {
@@ -461,8 +469,8 @@ export class Game {
       o.rotation.set(0, p.rot, 0);
       return;
     }
-    if (p.kind === 'decor' && o.userData.flat) {
-      const n = t.normalAt(p.x, p.z);
+    if (p.kind === 'decor' && (o.userData.flat || p.sn)) {
+      const n = p.sn || t.normalAt(p.x, p.z);
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
       o.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot));
     } else {
@@ -632,6 +640,7 @@ export class Game {
       h: this.tools.settledHeights(),
       props: this.props.map((p) => ({ ...p })),
       stats: { ...this.tools.stats },
+      sculpt: this.sculpt.beginRecord(),
     });
     if (this.undoStack.length > 15) this.undoStack.shift();
   }
@@ -642,6 +651,8 @@ export class Game {
     this.tools.stamps = [];
     this.terrain.h.set(s.h);
     this.terrain.markDirty(0, 0, N - 1, N - 1);
+    this.sculpt.restore(s.sculpt);
+    this.sculpt.flushAll();
     for (const p of this.props) if (!s.props.some((q) => q.obj === p.obj)) this.scene.remove(p.obj);
     for (const q of s.props) if (!this.props.includes(q) && !q.obj.parent) this.scene.add(q.obj);
     this.props = s.props.map((q) => {
@@ -700,7 +711,8 @@ export class Game {
       if (k === ']') this.ui.nudgeBrush(0.15);
       if (k === 't') this.ui.requestTide();
       if (k === 'h') this.ui.toggleHelp();
-      const tool = this.tools && ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].indexOf(k);
+      if (k === 'f') { const hit = this.pick(); if (hit) this.focusTo = hit.clone(); }
+      const tool = TOOLS.findIndex((t) => t.key.toLowerCase() === k);
       if (tool >= 0) this.ui.selectTool(tool);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
@@ -710,7 +722,18 @@ export class Game {
   pick() {
     if (!this.pointerInside) return null;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    return this.terrain.raycast(this.raycaster.ray);
+    const ray = this.raycaster.ray;
+    const ground = this.terrain.raycast(ray);
+    if (this.sculpt.empty || !this.tools.reachesSculpture()) return ground;
+    const max = ground ? ground.distanceTo(ray.origin) : 400;
+    return this.sculpt.raycast(ray, max, this.tools.pickSnapshot()) || ground;
+  }
+
+  // the sculpture under the pointer, ignoring the beach
+  pickSculpt() {
+    if (!this.pointerInside) return null;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    return this.sculpt.raycast(this.raycaster.ray, 400, false);
   }
 
   moveCamera(dt) {
@@ -719,6 +742,15 @@ export class Game {
     const r = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0);
     const rot = (k.has('e') ? 1 : 0) - (k.has('q') ? 1 : 0);
     const c = this.controls;
+    if (f || r) this.focusTo = null;
+    if (this.focusTo) {
+      // glide the view's centre onto the spot picked with F
+      const d = new THREE.Vector3().subVectors(this.focusTo, c.target);
+      if (d.lengthSq() < 1e-4) this.focusTo = null;
+      else d.multiplyScalar(Math.min(1, dt * 6));
+      c.target.add(d);
+      this.camera.position.add(d);
+    }
     if (f || r) {
       const dir = new THREE.Vector3().subVectors(c.target, this.camera.position);
       dir.y = 0;
@@ -739,14 +771,18 @@ export class Game {
     const tx = THREE.MathUtils.clamp(c.target.x, -lim, lim), tz = THREE.MathUtils.clamp(c.target.z, -lim, lim);
     const dx = tx - c.target.x, dz = tz - c.target.z;
     if (dx || dz) { c.target.x = tx; c.target.z = tz; this.camera.position.x += dx; this.camera.position.z += dz; }
-    const ground = Math.max(this.terrain.inside(c.target.x, c.target.z) ? this.terrain.heightAt(c.target.x, c.target.z) : 0, this.sim.tide);
-    c.target.y += (ground + 0.3 - c.target.y) * Math.min(1, dt * 2);
+    const inside = this.terrain.inside(c.target.x, c.target.z);
+    const ground = Math.max(inside ? this.terrain.heightAt(c.target.x, c.target.z) : 0, this.sim.tide);
+    const top = Math.max(ground, inside ? this.terrain.topAt(c.target.x, c.target.z) : 0);
+    // over a sculpture the focus may rest anywhere up its height (F aims it at a spot)
+    const want = THREE.MathUtils.clamp(c.target.y, ground + 0.3, top + 0.3);
+    c.target.y += (want - c.target.y) * Math.min(1, dt * 2);
   }
 
   constrainCamera() {
     const p = this.camera.position;
     let floor = this.sim.tide + 0.6;
-    if (this.terrain.inside(p.x, p.z)) floor = Math.max(floor, this.terrain.heightAt(p.x, p.z) + 0.7);
+    if (this.terrain.inside(p.x, p.z)) floor = Math.max(floor, this.terrain.topAt(p.x, p.z) + 0.7);
     if (p.y < floor) p.y = floor;
   }
 
@@ -777,6 +813,7 @@ export class Game {
       this.tools.updateCursor(null);
     }
     this.tools.update(dt);
+    this.sculpt.update();
     if (this.state === 'intro' || this.state === 'menu' || this.state === 'gate') this.intro.updateBuild(dt);
 
     if (playing) this.goals.update(dt);

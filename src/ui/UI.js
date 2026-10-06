@@ -298,7 +298,7 @@ export class UI {
 
   updateBrushLabel() {
     const t = this.game.tools;
-    const size = t.tool === 'carve' ? t.carveDims().width : t.radius * 2;
+    const size = t.tool === 'carve' ? t.carveDims().width : t.tool === 'sculpt' ? t.blockDims().hx * 2 : t.radius * 2;
     $('#brush-size-val').textContent = `${Math.round(size * 30)} 公分`;
     $('#brush-strength-val').textContent = `${Math.round(t.strength * 100)}%`;
   }

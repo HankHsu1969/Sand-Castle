@@ -23,6 +23,9 @@ export const sandUniforms = {
   uSunDirW: { value: new THREE.Vector3(0, 1, 0) },
 };
 
+// "no sculpture above this cell" in Terrain.solid
+export const NO_SOLID = -1e9;
+
 export function createSandMaterial() {
   const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -156,6 +159,8 @@ export class Terrain {
     this.h0 = new Float32Array(n);
     this.mask = new Float32Array(n); // 0 = locked edge, 1 = freely editable
     this.ao = new Float32Array(n).fill(1);
+    // top of any free-standing sculpture over each cell, so water and goals see it
+    this.solid = new Float32Array(n).fill(NO_SOLID);
 
     const geo = new THREE.BufferGeometry();
     this.pos = new Float32Array(n * 3);
@@ -221,6 +226,7 @@ export class Terrain {
         this.mask[j * N + i] = t * t * (3 - 2 * t);
       }
     }
+    this.solid.fill(NO_SOLID);
     this.markDirty(0, 0, N - 1, N - 1);
     this.flush();
     this.buildSkirt();
@@ -274,6 +280,14 @@ export class Terrain {
     const a = this.h[j * N + i], b = this.h[j * N + i + 1];
     const c = this.h[(j + 1) * N + i], d = this.h[(j + 1) * N + i + 1];
     return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
+  }
+
+  // ground height including sculptures standing on it
+  topAt(x, z) {
+    const h = this.heightAt(x, z);
+    const i = Math.round((x + HALF) / S), j = Math.round((z + HALF) / S);
+    if (i < 0 || j < 0 || i >= N || j >= N) return h;
+    return Math.max(h, this.solid[j * N + i]);
   }
 
   originalAt(x, z) {

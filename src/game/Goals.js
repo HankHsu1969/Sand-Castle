@@ -134,10 +134,10 @@ export class Goals {
   }
 
   computeMaxBuilt() {
-    const { h, h0 } = this.game.terrain;
+    const { h, h0, solid } = this.game.terrain;
     let m = 0;
     for (let k = 0; k < N * N; k++) {
-      const v = h[k] - h0[k];
+      const v = (h[k] > solid[k] ? h[k] : solid[k]) - h0[k];
       if (v > m) m = v;
     }
     this.maxBuilt = m;
@@ -177,7 +177,8 @@ export class Goals {
           let best = 0;
           for (const f of g.props) {
             if (f.kind !== 'flag' || f.fallen) continue;
-            best = Math.max(best, g.terrain.heightAt(f.x, f.z) - g.terrain.originalAt(f.x, f.z));
+            const fy = f.sy !== undefined ? f.sy : g.terrain.heightAt(f.x, f.z);
+            best = Math.max(best, fy - g.terrain.originalAt(f.x, f.z));
           }
           p = best / goal.height;
           label = `${Math.round(best * 30)} / ${Math.round(goal.height * 30)} 公分`;

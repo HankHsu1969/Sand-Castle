@@ -23,6 +23,7 @@ export class WaterSim {
     this.terrain = terrain;
     const n = M * M;
     this.b = new Float32Array(n);
+    this.beach = new Float32Array(n); // ground without sculptures
     this.d = new Float32Array(n);
     this.fl = new Float32Array(n);
     this.fr = new Float32Array(n);
@@ -149,7 +150,9 @@ export class WaterSim {
 
   // Copy terrain heights into the simulation ground (cells cover 2×2 vertices).
   syncGround(rect) {
-    const h = this.terrain.h;
+    const h = this.terrain.h, s = this.terrain.solid;
+    // sculptures are solid ground for the water as well
+    const g = (a) => (h[a] > s[a] ? h[a] : s[a]);
     const ci0 = rect ? Math.max(0, rect[0] >> 1) : 0;
     const cj0 = rect ? Math.max(0, rect[1] >> 1) : 0;
     const ci1 = rect ? Math.min(M - 1, rect[2] >> 1) : M - 1;
@@ -157,8 +160,9 @@ export class WaterSim {
     for (let j = cj0; j <= cj1; j++) {
       for (let i = ci0; i <= ci1; i++) {
         const a = 2 * j * N + 2 * i;
-        const v = (h[a] + h[a + 1] + h[a + N] + h[a + N + 1]) * 0.25;
+        const v = (g(a) + g(a + 1) + g(a + N) + g(a + N + 1)) * 0.25;
         const c = j * M + i;
+        this.beach[c] = (h[a] + h[a + 1] + h[a + N] + h[a + N + 1]) * 0.25;
         this.b[c] = v;
         this.groundData[c] = TO_HALF(v);
       }
@@ -317,7 +321,8 @@ export class WaterSim {
           if (i < M - 1 && surf[c + 1] > m) m = surf[c + 1];
           if (j > 0 && surf[c - M] > m) m = surf[c - M];
           if (j < M - 1 && surf[c + M] > m) m = surf[c + M];
-          s = m > -900 ? Math.min(m, b[c] + 0.004) : b[c] - 0.3;
+          // (below the beach, not a sculpture's top, so its sides don't read as underwater)
+          s = m > -900 ? Math.min(m, b[c] + 0.004) : this.beach[c] - 0.3;
           // far from any water: tuck the vertex deep under the sand so edge
           // triangles slope downward instead of climbing castle walls
           y = m > -900 ? m : Math.min(b[c], this.tide) - 3;

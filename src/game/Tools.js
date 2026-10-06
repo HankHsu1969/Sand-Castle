@@ -3,11 +3,12 @@ import { N, S, HALF, FLOOR } from '../core/config.js';
 import { segDist, smoothstep } from '../core/noise.js';
 
 export const TOOLS = [
-  { id: 'raise', name: '堆沙', icon: 'assets/icons/raise.png', key: '1', hint: '按住左鍵堆起濕沙' },
-  { id: 'dig', name: '挖沙', icon: 'assets/icons/dig.png', key: '2', hint: '按住左鍵往下挖，也許會挖到寶藏' },
-  { id: 'smooth', name: '抹順', icon: 'assets/icons/smooth.png', key: '3', hint: '把粗糙的沙面抹得圓滑' },
-  { id: 'flatten', name: '壓平', icon: 'assets/icons/flatten.png', key: '4', hint: '以點下處的高度壓出平台' },
-  { id: 'carve', name: '雕刻', icon: 'assets/icons/carve.png', key: '5', hint: '拖曳刻出細紋、磚縫與花紋 · 按住 Shift 拖曳則堆出細邊' },
+  { id: 'raise', name: '堆沙', icon: 'assets/icons/raise.png', key: '1', hint: '按住左鍵堆起濕沙 · 在沙雕上則從任何角度補上沙' },
+  { id: 'dig', name: '挖沙', icon: 'assets/icons/dig.png', key: '2', hint: '按住左鍵往下挖，也許會挖到寶藏 · 在沙雕上可從側面挖出造型' },
+  { id: 'smooth', name: '抹順', icon: 'assets/icons/smooth.png', key: '3', hint: '把粗糙的沙面抹得圓滑，沙雕的臉和身體也適用' },
+  { id: 'flatten', name: '壓平', icon: 'assets/icons/flatten.png', key: '4', hint: '以點下處的高度壓出平台 · 在沙雕上削出平整的切面' },
+  { id: 'carve', name: '雕刻', icon: 'assets/icons/carve.png', key: '5', hint: '拖曳刻出細紋與五官 · Shift 拖曳堆出細邊 · 在塔樓側面雕刻會自動轉成立體沙雕' },
+  { id: 'sculpt', name: '沙雕塊', icon: 'assets/icons/sculpt.png', key: 'B', hint: '點沙灘放一塊壓實的沙（Shift：平躺長塊）· 點城堡把它變成可從側面雕刻的沙雕' },
   { id: 'tower', name: '水桶塔', icon: 'assets/icons/tower.png', key: '6', hint: '點一下倒扣水桶，做出一座塔樓 · 按住拖曳可連續蓋一排' },
   { id: 'wall', name: '城牆', icon: 'assets/icons/wall.png', key: '7', hint: '按住拖曳，沿路築起有城垛的城牆' },
   { id: 'channel', name: '挖渠', icon: 'assets/icons/channel.png', key: '8', hint: '按住拖曳挖出水道或護城河' },
@@ -16,13 +17,17 @@ export const TOOLS = [
 ];
 
 const TOOL_COLORS = {
-  raise: 0xffe08a, dig: 0xff9a7a, smooth: 0xbfefff, flatten: 0xd6c4ff, carve: 0xb8f5c8,
+  raise: 0xffe08a, dig: 0xff9a7a, smooth: 0xbfefff, flatten: 0xd6c4ff, carve: 0xb8f5c8, sculpt: 0xffd9a0,
   tower: 0xffffff, wall: 0xffffff, channel: 0x7fe7ff, decor: 0xffb7d0, flag: 0xff8080,
 };
 
 // sand this far above the untouched beach counts as part of a structure
 const BUILT = 0.06;
 const PATH_TOOLS = ['wall', 'channel', 'carve'];
+// tools that shape a free-standing sculpture in 3D when the pointer is on one
+const VOL_TOOLS = ['raise', 'dig', 'smooth', 'flatten', 'carve'];
+const SCULPT_PICK = [...VOL_TOOLS, 'sculpt', 'decor', 'flag'];
+const _u = new THREE.Vector3(), _v = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _x = new THREE.Vector3(1, 0, 0);
 
 const falloff = (t) => (t >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * t));
 const easeOutBack = (t) => { const c = 1.6; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
@@ -67,8 +72,27 @@ export class Tools {
 
   effectiveRadius() {
     if (this.tool === 'decor' || this.tool === 'flag') return 0.35;
+    if (this.tool === 'sculpt') return this.blockDims().hx;
     return this.radius;
   }
+
+  // sculptures are worked with finer tools than the beach
+  volRadius() { return 0.1 + this.radius * 0.28; }
+
+  carveVolDims() {
+    const w = 0.06 + this.radius * 0.075;
+    return { width: w, depth: w * 0.45 * this.strength };
+  }
+
+  blockDims() {
+    const hx = 0.25 + this.radius * 0.38;
+    return { hx, hy: hx * 1.3 + 0.15 };
+  }
+
+  reachesSculpture() { return SCULPT_PICK.includes(this.tool); }
+
+  // a carving stroke on a sculpture aims at the surface as it was when the stroke began
+  pickSnapshot() { return !!(this.down && this.stroke && this.stroke.vol && this.tool === 'carve'); }
 
   updateCursor(hit) {
     this.cursor = hit;
@@ -76,6 +100,24 @@ export class Tools {
     this.ring.visible = vis;
     this.dot.visible = vis;
     if (!vis) return;
+    if (hit.sculpt) {
+      // a ring lying on the sculpture's surface, whichever way it faces
+      const n = hit.normal;
+      const r = this.tool === 'carve' ? this.carveVolDims().width / 2
+        : this.tool === 'decor' || this.tool === 'flag' ? 0.2
+        : this.tool === 'sculpt' ? this.blockDims().hx
+        : this.volRadius();
+      _u.crossVectors(Math.abs(n.y) < 0.9 ? _up : _x, n).normalize();
+      _v.crossVectors(n, _u);
+      const p = this.ring.geometry.attributes.position;
+      for (let k = 0; k < p.count; k++) {
+        const a = (k / p.count) * Math.PI * 2, c = Math.cos(a) * r, s = Math.sin(a) * r;
+        p.setXYZ(k, hit.x + n.x * 0.015 + _u.x * c + _v.x * s, hit.y + n.y * 0.015 + _u.y * c + _v.y * s, hit.z + n.z * 0.015 + _u.z * c + _v.z * s);
+      }
+      p.needsUpdate = true;
+      this.dot.position.copy(hit).addScaledVector(n, 0.03);
+      return;
+    }
     const r = this.tool === 'wall' ? this.wallDims().width / 2
       : this.tool === 'channel' ? this.channelDims().width / 2
       : this.tool === 'carve' ? this.carveDims().width / 2
@@ -122,6 +164,11 @@ export class Tools {
         else g.placeFlag(hit);
         this.down = false;
         return;
+      case 'sculpt':
+        g.pushUndo();
+        this.placeSculpt(hit, !!(ev && ev.shiftKey));
+        this.down = false;
+        return;
       case 'tower':
         // one undo step per press; dragging keeps setting buckets down in a row
         g.pushUndo();
@@ -131,7 +178,22 @@ export class Tools {
       default:
         break;
     }
-    g.pushUndo();
+    let pushed = false;
+    if (VOL_TOOLS.includes(this.tool)) {
+      let h = hit;
+      // carving into the side of a tower first turns that part of the castle into sculpture
+      if (!h.sculpt && this.tool === 'carve' && this.onSteepBuilt(h)) {
+        g.pushUndo();
+        pushed = true;
+        if (this.convertAt(h.x, h.z)) h = g.pickSculpt() || h;
+      }
+      if (h.sculpt) {
+        if (!pushed) g.pushUndo();
+        this.beginVolStroke(h, ev);
+        return;
+      }
+    }
+    if (!pushed) g.pushUndo();
     const path = PATH_TOOLS.includes(this.tool);
     this.stroke = {
       last: hit.clone(),
@@ -147,6 +209,11 @@ export class Tools {
 
   move(hit) {
     if (!this.down || !hit || !this.stroke) return;
+    if (this.stroke.vol) {
+      if (this.tool === 'carve' && hit.sculpt && hit.distanceTo(this.stroke.last) >= 0.02) this.carveVolSegment(hit);
+      return;
+    }
+    if (hit.sculpt) return; // beach strokes pause while the pointer is over a sculpture
     if (this.tool === 'tower') {
       // follow the pointer across the level the row started on, so a ray that
       // slips past the buckets already standing can't drop one behind them
@@ -163,6 +230,7 @@ export class Tools {
   end() {
     this.down = false;
     this.stroke = null;
+    this.game.sculpt.strokeSnap = null;
     this.game.audio.brush(false);
   }
 
@@ -189,6 +257,11 @@ export class Tools {
 
     const hit = this.cursor;
     if (!this.down || !hit || !this.stroke) return;
+    if (this.stroke.vol) {
+      if (hit.sculpt) this.updateVol(hit, dt);
+      return;
+    }
+    if (hit.sculpt) return;
     const g = this.game;
     const r = this.radius;
     const t = this.terrain;
@@ -243,6 +316,135 @@ export class Tools {
       default:
         break;
     }
+  }
+
+  // ---------- free-standing sculpture ----------
+  beginVolStroke(h, ev) {
+    const sc = this.game.sculpt;
+    sc.strokeSnap = this.tool === 'carve' ? new Map() : null;
+    this.stroke = { vol: true, last: h.clone(), n: h.normal.clone(), p0: h.clone(), n0: h.normal.clone(), emboss: !!(ev && ev.shiftKey) };
+    if (this.tool === 'carve') this.carveVolSegment(h);
+  }
+
+  carveVolSegment(b) {
+    const st = this.stroke;
+    const { width, depth } = this.carveVolDims();
+    // if the pointer jumped (slipped off an edge onto another face), start a new line
+    // rather than cutting straight through the sculpture between the two points
+    if (st.last.distanceTo(b) > Math.max(0.3, width * 3)) { st.last.copy(b); st.n.copy(b.normal); }
+    this.game.sculpt.carve(st.last, b, st.n, b.normal, width / 2, depth, st.emboss);
+    st.last.copy(b);
+    st.n.copy(b.normal);
+    this.game.audio.brush(true, 'carve');
+    if (Math.random() < 0.6) this.crumbs(b, 1, 0.5);
+  }
+
+  updateVol(hit, dt) {
+    const g = this.game, sc = g.sculpt, str = this.strength, r = this.volRadius();
+    switch (this.tool) {
+      case 'raise':
+        sc.brushAdd(hit, r, 2.2 * str * dt);
+        g.audio.brush(true, 'raise', 0.5);
+        if (Math.random() < 0.5) this.crumbs(hit, 1, 0.4);
+        break;
+      case 'dig':
+        sc.brushAdd(hit, r, -2.2 * str * dt);
+        g.audio.brush(true, 'dig');
+        if (Math.random() < 0.7) this.crumbs(hit, 2, 1);
+        break;
+      case 'smooth':
+        sc.brushSmooth(hit, r, Math.min(1, 9 * str * dt));
+        g.audio.brush(true, 'smooth');
+        break;
+      case 'flatten':
+        sc.brushFlatten(hit, r, this.stroke.p0, this.stroke.n0, Math.min(1, 6 * str * dt));
+        g.audio.brush(true, 'flatten');
+        break;
+      default:
+        break;
+    }
+  }
+
+  crumbs(p, n, speed) {
+    const g = this.game, nr = p.normal;
+    const floor = this.terrain.heightAt(p.x, p.z) - 0.05;
+    for (let k = 0; k < n; k++) {
+      const c = new THREE.Color(0.86, 0.72, 0.52).multiplyScalar(0.8 + Math.random() * 0.3);
+      g.sand.emit(p.x, p.y, p.z,
+        nr.x * speed + (Math.random() - 0.5) * 0.6, nr.y * speed + 0.4 + Math.random() * 0.5, nr.z * speed + (Math.random() - 0.5) * 0.6,
+        { life: 0.7, size: 0.03 + Math.random() * 0.03, color: c, gravity: -9, floor });
+    }
+  }
+
+  // steep built sand near the pointer: the side of a tower or wall
+  onSteepBuilt(hit) {
+    const t = this.terrain;
+    if (t.normalAt(hit.x, hit.z).y > 0.6) return false;
+    const ci = Math.round((hit.x + HALF) / S), cj = Math.round((hit.z + HALF) / S);
+    for (let j = cj - 2; j <= cj + 2; j++) for (let i = ci - 2; i <= ci + 2; i++) {
+      if (i < 0 || j < 0 || i >= N || j >= N) continue;
+      if (t.h[j * N + i] - t.h0[j * N + i] > BUILT) return true;
+    }
+    return false;
+  }
+
+  // Turn the castle around (x, z) into sculpture so it can be carved from any side.
+  convertAt(x, z) {
+    const g = this.game, t = this.terrain;
+    // props standing on what becomes sculpture keep their height
+    const pins = g.props.filter((p) => p.sy === undefined && Math.hypot(p.x - x, p.z - z) < 3.6).map((p) => [p, t.heightAt(p.x, p.z)]);
+    const res = g.sculpt.convertStructure(x, z, 3.2, (k) => t.h[k] - t.h0[k] > BUILT);
+    if (!res) return false;
+    for (const [p, y] of pins) if (t.heightAt(p.x, p.z) < y - 0.02) p.sy = y;
+    g.sculpt.flushAll();
+    g.updateProps(true);
+    g.audio.sfx('sparkle');
+    g.sparkleBurst(res.center, 14, 0.8);
+    this.sculptHint();
+    return true;
+  }
+
+  placeSculpt(hit, slab) {
+    const g = this.game, t = this.terrain, sc = g.sculpt;
+    if (!hit.sculpt) {
+      // clicking a castle turns it into sculpture instead of burying it in a block
+      const i = Math.round((hit.x + HALF) / S), j = Math.round((hit.z + HALF) / S);
+      const k = Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i));
+      if (t.h[k] - t.h0[k] > BUILT && this.convertAt(hit.x, hit.z)) return;
+    }
+    const { hx, hy } = this.blockDims();
+    let ax = hx, ay = hy, az = hx, angle = 0;
+    if (slab) {
+      // a long, low slab lying across the view — room for a reclining mermaid
+      ax = hx * 2.1; az = hx * 0.95; ay = 0.2 + this.radius * 0.17;
+      const v = g.camera.getWorldDirection(new THREE.Vector3());
+      angle = Math.atan2(v.x, -v.z);
+    }
+    let baseY;
+    if (hit.sculpt) baseY = hit.y - 0.1; // stacked on another block
+    else {
+      // sink to the lowest sand under the footprint so no gap shows on a slope
+      let lo = t.heightAt(hit.x, hit.z);
+      const ex = Math.max(ax, az) * 0.95;
+      for (let a = 0; a < 16; a++) {
+        const th = (a / 16) * Math.PI * 2;
+        lo = Math.min(lo, t.heightAt(hit.x + Math.cos(th) * ex, hit.z + Math.sin(th) * ex));
+      }
+      baseY = lo - 0.12;
+    }
+    sc.addBlock(hit.x, hit.z, baseY, ax, ay, az, angle);
+    sc.flushAll();
+    if (sc.full) g.ui.toast('沙雕已經用掉太多沙了，先雕琢現有的作品吧', 'info');
+    this.stats.sculpt = (this.stats.sculpt || 0) + 1;
+    g.audio.sfx('thump');
+    g.dustRing(new THREE.Vector3(hit.x, baseY + 0.12, hit.z), Math.max(ax, az));
+    this.sculptHint();
+  }
+
+  sculptHint() {
+    if (this.hinted) return;
+    this.hinted = true;
+    this.game.ui.toast('沙雕可以從任何角度雕琢：挖沙、堆沙、抹順、壓平、雕刻都能用', 'info');
   }
 
   // ---------- bucket tower ----------
