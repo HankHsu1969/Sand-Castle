@@ -7,17 +7,22 @@ export const TOOLS = [
   { id: 'dig', name: '挖沙', icon: 'assets/icons/dig.png', key: '2', hint: '按住左鍵往下挖，也許會挖到寶藏' },
   { id: 'smooth', name: '抹順', icon: 'assets/icons/smooth.png', key: '3', hint: '把粗糙的沙面抹得圓滑' },
   { id: 'flatten', name: '壓平', icon: 'assets/icons/flatten.png', key: '4', hint: '以點下處的高度壓出平台' },
-  { id: 'tower', name: '水桶塔', icon: 'assets/icons/tower.png', key: '5', hint: '點一下倒扣水桶，做出一座塔樓' },
-  { id: 'wall', name: '城牆', icon: 'assets/icons/wall.png', key: '6', hint: '按住拖曳，沿路築起有城垛的城牆' },
-  { id: 'channel', name: '挖渠', icon: 'assets/icons/channel.png', key: '7', hint: '按住拖曳挖出水道或護城河' },
-  { id: 'decor', name: '裝飾', icon: 'assets/icons/decor.png', key: '8', hint: '點擊擺放貝殼與小物 · Ctrl+點擊移除' },
-  { id: 'flag', name: '旗幟', icon: 'assets/icons/flag.png', key: '9', hint: '把旗幟插在城堡上 · Ctrl+點擊移除' },
+  { id: 'carve', name: '雕刻', icon: 'assets/icons/carve.png', key: '5', hint: '拖曳刻出細紋、磚縫與花紋 · 按住 Shift 拖曳則堆出細邊' },
+  { id: 'tower', name: '水桶塔', icon: 'assets/icons/tower.png', key: '6', hint: '點一下倒扣水桶，做出一座塔樓 · 按住拖曳可連續蓋一排' },
+  { id: 'wall', name: '城牆', icon: 'assets/icons/wall.png', key: '7', hint: '按住拖曳，沿路築起有城垛的城牆' },
+  { id: 'channel', name: '挖渠', icon: 'assets/icons/channel.png', key: '8', hint: '按住拖曳挖出水道或護城河' },
+  { id: 'decor', name: '裝飾', icon: 'assets/icons/decor.png', key: '9', hint: '點擊擺放貝殼與小物 · Ctrl+點擊移除' },
+  { id: 'flag', name: '旗幟', icon: 'assets/icons/flag.png', key: '0', hint: '把旗幟插在城堡上 · Ctrl+點擊移除' },
 ];
 
 const TOOL_COLORS = {
-  raise: 0xffe08a, dig: 0xff9a7a, smooth: 0xbfefff, flatten: 0xd6c4ff,
+  raise: 0xffe08a, dig: 0xff9a7a, smooth: 0xbfefff, flatten: 0xd6c4ff, carve: 0xb8f5c8,
   tower: 0xffffff, wall: 0xffffff, channel: 0x7fe7ff, decor: 0xffb7d0, flag: 0xff8080,
 };
+
+// sand this far above the untouched beach counts as part of a structure
+const BUILT = 0.06;
+const PATH_TOOLS = ['wall', 'channel', 'carve'];
 
 const falloff = (t) => (t >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * t));
 const easeOutBack = (t) => { const c = 1.6; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
@@ -71,7 +76,10 @@ export class Tools {
     this.ring.visible = vis;
     this.dot.visible = vis;
     if (!vis) return;
-    const r = this.tool === 'wall' ? this.wallDims().width / 2 : this.tool === 'channel' ? this.channelDims().width / 2 : this.effectiveRadius();
+    const r = this.tool === 'wall' ? this.wallDims().width / 2
+      : this.tool === 'channel' ? this.channelDims().width / 2
+      : this.tool === 'carve' ? this.carveDims().width / 2
+      : this.effectiveRadius();
     const p = this.ring.geometry.attributes.position;
     for (let k = 0; k < p.count; k++) {
       const a = (k / p.count) * Math.PI * 2;
@@ -104,6 +112,8 @@ export class Tools {
     this.down = true;
     const g = this.game;
     const remove = ev && (ev.ctrlKey || ev.metaKey);
+    // other tools work on the finished shape of any tower that is still rising
+    if (this.tool !== 'tower') this.settleStamps();
     switch (this.tool) {
       case 'decor':
       case 'flag':
@@ -113,28 +123,41 @@ export class Tools {
         this.down = false;
         return;
       case 'tower':
+        // one undo step per press; dragging keeps setting buckets down in a row
         g.pushUndo();
         this.stampTower(hit.x, hit.z, this.radius, 0.45);
-        this.down = false;
+        this.stroke = { last: hit.clone(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.y) };
         return;
       default:
         break;
     }
     g.pushUndo();
+    const path = PATH_TOOLS.includes(this.tool);
     this.stroke = {
       last: hit.clone(),
       target: this.terrain.heightAt(hit.x, hit.z),
-      snap: this.tool === 'wall' || this.tool === 'channel' ? this.terrain.h.slice() : null,
+      snap: path ? this.terrain.h.slice() : null,
       s: 0,
       bottom: null,
       points: [hit.clone()],
+      emboss: !!(ev && ev.shiftKey),
     };
-    if (this.tool === 'wall' || this.tool === 'channel') this.extendPath(hit, true);
+    if (path) this.extendPath(hit, true);
   }
 
   move(hit) {
     if (!this.down || !hit || !this.stroke) return;
-    if (this.tool === 'wall' || this.tool === 'channel') this.extendPath(hit, false);
+    if (this.tool === 'tower') {
+      // follow the pointer across the level the row started on, so a ray that
+      // slips past the buckets already standing can't drop one behind them
+      const st = this.stroke;
+      const p = this.game.raycaster.ray.intersectPlane(st.plane, new THREE.Vector3()) || hit;
+      // close enough that neighbouring buckets merge into one solid row
+      if (Math.hypot(p.x - st.last.x, p.z - st.last.z) >= this.radius * 1.6) {
+        this.stampTower(p.x, p.z, this.radius, 0.45);
+        st.last.copy(p);
+      }
+    } else if (PATH_TOOLS.includes(this.tool)) this.extendPath(hit, false);
   }
 
   end() {
@@ -250,37 +273,90 @@ export class Tools {
     return h;
   }
 
+  // heights every cell will settle at once the towers still rising have landed
+  pendingTargets() {
+    const m = new Map();
+    for (const st of this.stamps) for (let q = 0; q < st.cells.length; q++) m.set(st.cells[q], st.target[q]);
+    return m;
+  }
+
+  settledHeights() {
+    const h = this.terrain.h.slice();
+    for (const st of this.stamps) for (let q = 0; q < st.cells.length; q++) h[st.cells[q]] = st.target[q];
+    return h;
+  }
+
+  // finish every rising tower at once
+  settleStamps() {
+    if (!this.stamps.length) return;
+    const h = this.terrain.h;
+    for (const st of this.stamps) {
+      for (let q = 0; q < st.cells.length; q++) h[st.cells[q]] = st.target[q];
+      this.terrain.markDirty(st.rect[0], st.rect[1], st.rect[2], st.rect[3]);
+      if (st.onDone) st.onDone();
+    }
+    this.stamps = [];
+  }
+
   stampTower(x, z, R, dur = 0.45, onDone = null, silent = false) {
     const t = this.terrain;
     const pad = R * 1.35; // ground around the bucket is levelled flat
-    // base: average ground under the bucket
-    let sum = 0, n = 0;
+    // Work from the shape the sand is about to settle into, so buckets set down
+    // in quick succession build on each other instead of on half-risen towers.
+    const pend = this.stamps.length ? this.pendingTargets() : null;
+    const cur = (k) => (pend && pend.has(k) ? pend.get(k) : t.h[k]);
+    const isBuilt = (k, v) => v - t.h0[k] > BUILT;
+    // Base: over open beach the bucket sits on the beach itself (ignoring any
+    // castle it overlaps); when most of the footprint is castle already, the
+    // bucket is stacked on top of it.
+    let sumN = 0, nN = 0, sumA = 0, nA = 0;
     this.forRegion(x, z, R * 0.9, (k, px, pz) => {
-      if (Math.hypot(px - x, pz - z) < R * 0.9) { sum += t.h[k]; n++; }
+      if (Math.hypot(px - x, pz - z) >= R * 0.9) return;
+      const v = cur(k);
+      sumA += v; nA++;
+      if (!isBuilt(k, v)) { sumN += v; nN++; }
     });
-    if (!n) return;
-    const base = sum / n;
+    if (!nA) return;
+    const stacked = nN < nA * 0.5;
+    const base = stacked ? sumA / nA : sumN / nN;
     const cells = [], target = [], snap = [];
     let i0 = N, j0 = N, i1 = 0, j1 = 0;
     this.forRegion(x, z, pad, (k, px, pz, i, j) => {
       const rho = Math.hypot(px - x, pz - z);
       if (rho > pad) return;
-      const m = t.mask[k];
+      const hk = cur(k);
+      const built = isBuilt(k, hk);
       let v;
       if (rho <= R) {
-        // the bucket body sits on a perfectly level footprint
+        // the bucket body sits on a perfectly level footprint; where it meets
+        // castle that is already standing the two simply merge
         v = base + this.towerProfile(px - x, pz - z, R);
+        if (built || stacked) v = Math.max(hk, v);
       } else {
-        // a level apron that eases back into the surrounding sand
+        // a level apron that eases back into the surrounding beach, leaving
+        // neighbouring towers and walls untouched
+        if (built || stacked) return;
         const w = smoothstep(R, pad, rho);
-        v = base * (1 - w) + t.h[k] * w;
+        v = base * (1 - w) + hk * w;
       }
-      v = t.h[k] + (v - t.h[k]) * m;
-      if (Math.abs(v - t.h[k]) < 1e-4) return;
+      v = hk + (v - hk) * t.mask[k];
+      if (Math.abs(v - hk) < 1e-4) return;
       cells.push(k); target.push(v); snap.push(t.h[k]);
       i0 = Math.min(i0, i); j0 = Math.min(j0, j); i1 = Math.max(i1, i); j1 = Math.max(j1, j);
     });
     if (!cells.length) return;
+    // the new bucket takes over any cells an earlier one is still raising
+    if (this.stamps.length) {
+      const mine = new Set(cells);
+      for (const st of this.stamps) {
+        let w = 0;
+        for (let q = 0; q < st.cells.length; q++) {
+          if (mine.has(st.cells[q])) continue;
+          st.cells[w] = st.cells[q]; st.target[w] = st.target[q]; st.snap[w] = st.snap[q]; w++;
+        }
+        st.cells.length = st.target.length = st.snap.length = w;
+      }
+    }
     this.stamps.push({ cells, target, snap, t: 0, dur, rect: [i0, j0, i1, j1], onDone });
     this.stats.towers++;
     this.game.sim.wetAround(x, z, R * 1.2);
@@ -301,13 +377,20 @@ export class Tools {
     return { width: 0.55 + R * 0.65, depth: 0.35 + R * 0.4 };
   }
 
+  carveDims() {
+    // a fine knife: two to four sand cells wide whatever the brush size
+    const R = this.radius;
+    return { width: 0.2 + R * 0.09, depth: (0.07 + R * 0.045) * this.strength };
+  }
+
   extendPath(hit, first) {
     const st = this.stroke;
-    const minStep = 0.22;
+    const minStep = this.tool === 'carve' ? 0.05 : 0.22;
     if (!first && hit.distanceTo(st.last) < minStep) return;
     const a = first ? hit.clone().add(new THREE.Vector3(0.001, 0, 0)) : st.last.clone();
     const b = hit.clone();
     if (this.tool === 'wall') this.stampWallSegment(a, b, st);
+    else if (this.tool === 'carve') this.stampCarveSegment(a, b, st);
     else this.stampChannelSegment(a, b, st);
     st.s += a.distanceTo(b);
     st.last.copy(b);
@@ -392,5 +475,37 @@ export class Tools {
     this.game.audio.brush(true, 'channel');
     this.game.sandBurst(b, half, 3, true);
     this.game.checkTreasures();
+  }
+
+  // A fine groove cut into the surface as it was when the stroke began, so going
+  // over the same line again in one stroke keeps it crisp instead of deepening it.
+  // With Shift held the knife lays down a thin raised bead instead.
+  stampCarveSegment(a, b, st) {
+    const { width, depth } = this.carveDims();
+    const reach = width / 2 + S * 0.5; // half a cell of soft edge keeps lines from stair-stepping
+    const h = this.terrain.h, mask = this.terrain.mask, snap = st.snap;
+    const minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x), minZ = Math.min(a.z, b.z), maxZ = Math.max(a.z, b.z);
+    const rr = Math.max(maxX - minX, maxZ - minZ) / 2 + reach;
+    this.forRegion((minX + maxX) / 2, (minZ + maxZ) / 2, rr, (k, x, z) => {
+      const { d } = segDist(x, z, a.x, a.z, b.x, b.z);
+      if (d >= reach) return;
+      const p = depth * (0.5 + 0.5 * Math.cos(Math.PI * d / reach)) * mask[k];
+      if (st.emboss) {
+        const v = snap[k] + p;
+        if (v > h[k]) h[k] = v;
+      } else {
+        const v = Math.max(FLOOR, snap[k] - p);
+        if (v < h[k]) h[k] = v;
+      }
+    });
+    const g = this.game;
+    g.audio.brush(true, 'carve');
+    // a few crumbs flicked off the blade
+    if (Math.random() < 0.7) {
+      const y = this.terrain.heightAt(b.x, b.z);
+      const c = new THREE.Color(0.86, 0.72, 0.52).multiplyScalar(0.8 + Math.random() * 0.3);
+      g.sand.emit(b.x, y + 0.03, b.z, (Math.random() - 0.5) * 0.7, 0.5 + Math.random() * 0.7, (Math.random() - 0.5) * 0.7,
+        { life: 0.5, size: 0.03 + Math.random() * 0.025, color: c, gravity: -9, floor: y - 0.15 });
+    }
   }
 }

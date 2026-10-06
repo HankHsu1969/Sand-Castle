@@ -467,6 +467,16 @@ export class AudioEngine {
     if (t < this.nextGrain) return;
     const dig = kind === 'dig' || kind === 'channel';
     const smooth = kind === 'smooth' || kind === 'flatten';
+    if (kind === 'carve') {
+      if (this.samples && this.samples.scoop1) {
+        this.playSample(Math.random() < 0.5 ? 'scoop1' : 'scoop2', { gain: 0.14, rate: 1.45 + Math.random() * 0.25, pan: (Math.random() - 0.5) * 0.3, duration: 0.2, fadeOut: 0.08 });
+        this.nextGrain = t + 0.12 + Math.random() * 0.06;
+      } else {
+        this.noiseHit(t, { freq: 3400 + Math.random() * 800, q: 1.4, dur: 0.06, vel: 0.04, attack: 0.008 });
+        this.nextGrain = t + 0.08 + Math.random() * 0.04;
+      }
+      return;
+    }
     if (this.samples && this.samples.scoop1) {
       const key = Math.random() < 0.5 ? 'scoop1' : 'scoop2';
       const rate = smooth ? 0.7 + Math.random() * 0.1 : dig ? 0.85 + Math.random() * 0.2 : 1.0 + Math.random() * 0.25 - wet * 0.1;

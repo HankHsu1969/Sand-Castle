@@ -281,6 +281,7 @@ export class UI {
     $('#tool-label').innerHTML = `<b>${t.name}</b><span>${t.hint}</span>`;
     $('#decor-palette').classList.toggle('show', t.id === 'decor');
     $('#brush-panel').classList.toggle('dim', t.id === 'decor' || t.id === 'flag');
+    this.updateBrushLabel();
     if (!quiet) this.audio.sfx('tool');
     if (t.id === 'decor') {
       document.querySelectorAll('.decor').forEach((x) => x.classList.toggle('active', x.dataset.decor === this.game.tools.decorType));
@@ -297,7 +298,8 @@ export class UI {
 
   updateBrushLabel() {
     const t = this.game.tools;
-    $('#brush-size-val').textContent = `${Math.round(t.radius * 2 * 30)} 公分`;
+    const size = t.tool === 'carve' ? t.carveDims().width : t.radius * 2;
+    $('#brush-size-val').textContent = `${Math.round(size * 30)} 公分`;
     $('#brush-strength-val').textContent = `${Math.round(t.strength * 100)}%`;
   }
 

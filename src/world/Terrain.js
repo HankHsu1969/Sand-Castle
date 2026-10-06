@@ -339,8 +339,12 @@ export class Terrain {
             if (v > 0) occ += v > 1.6 ? 1.6 : v;
           }
         }
+        // fine creases (carved lines, the foot of a tower) collect a little shadow
+        // too: curvature against the four neighbours, zero on plain slopes
+        const crease = ((h[k - l] + h[k + r] + h[k - d] + h[k + u]) * 0.25 - hc) / S;
+        const occF = Math.max(0.42, 1 - occ * 0.045) * (1 - Math.min(0.4, Math.max(0, crease) * 0.6));
         // no occlusion darkening in the locked border band (its samples are clamped)
-        const ao = 1 - (1 - Math.max(0.42, 1 - occ * 0.045)) * this.mask[k];
+        const ao = 1 - (1 - occF) * this.mask[k];
         col[k * 3] = ao; col[k * 3 + 1] = ao; col[k * 3 + 2] = ao;
         const disturbed = Math.abs(hc - this.h0[k]) / 0.1;
         this.built[k] = disturbed > 1 ? 1 : disturbed;

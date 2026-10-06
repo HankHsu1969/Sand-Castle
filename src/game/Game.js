@@ -629,7 +629,7 @@ export class Game {
   // ---------------- undo ----------------
   pushUndo() {
     this.undoStack.push({
-      h: this.terrain.h.slice(),
+      h: this.tools.settledHeights(),
       props: this.props.map((p) => ({ ...p })),
       stats: { ...this.tools.stats },
     });
@@ -639,6 +639,7 @@ export class Game {
   undo() {
     const s = this.undoStack.pop();
     if (!s) return;
+    this.tools.stamps = [];
     this.terrain.h.set(s.h);
     this.terrain.markDirty(0, 0, N - 1, N - 1);
     for (const p of this.props) if (!s.props.some((q) => q.obj === p.obj)) this.scene.remove(p.obj);
@@ -699,7 +700,7 @@ export class Game {
       if (k === ']') this.ui.nudgeBrush(0.15);
       if (k === 't') this.ui.requestTide();
       if (k === 'h') this.ui.toggleHelp();
-      const tool = this.tools && ['1', '2', '3', '4', '5', '6', '7', '8', '9'].indexOf(k);
+      const tool = this.tools && ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].indexOf(k);
       if (tool >= 0) this.ui.selectTool(tool);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
@@ -770,6 +771,8 @@ export class Game {
     if (playing) {
       hit = this.pick();
       this.tools.updateCursor(hit);
+      // drag strokes (walls, channels, carving, rows of towers) follow the pointer
+      if (hit) this.tools.move(hit);
     } else {
       this.tools.updateCursor(null);
     }
