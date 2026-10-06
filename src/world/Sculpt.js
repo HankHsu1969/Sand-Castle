@@ -318,16 +318,47 @@ export class Sculpt {
       });
   }
 
-  // A packed block of sand, like one tipped out of a sculpting form.
-  addBlock(cx, cz, baseY, hx, hy, hz, angle = 0) {
+  // Height of the highest sand surface in the column at (x, z), at or below
+  // `below`, or -Infinity when the column holds no sculpture there.
+  columnTop(x, z, below = Infinity) {
+    const b = this.bounds;
+    if (!b) return -Infinity;
+    const vx = Math.round(x / VOX), vz = Math.round(z / VOX);
+    if (vx < b[0] || vx > b[3] || vz < b[2] || vz > b[5]) return -Infinity;
+    for (let iy = Math.min(b[4] + 1, Math.floor(below / VOX)); iy >= b[1]; iy--) {
+      const v = this.get(vx, iy, vz);
+      if (v >= 0.5) return (iy + (v - 0.5) / Math.max(1e-3, v - this.get(vx, iy + 1, vz))) * VOX;
+    }
+    return -Infinity;
+  }
+
+  // A packed block of sand, like one tipped out of a sculpting form. Wherever
+  // its bottom would hang in the air (over an edge, a slope or a hole) the sand
+  // runs on down to whatever holds it up — support(x, z) gives that height.
+  addBlock(cx, cz, baseY, hx, hy, hz, angle = 0, support = null) {
     const ca = Math.cos(angle), sa = Math.sin(angle);
     const rr = Math.min(0.1, hx * 0.2, hy * 0.3);
     const ex = Math.abs(ca) * hx + Math.abs(sa) * hz + RAMP * 2, ez = Math.abs(sa) * hx + Math.abs(ca) * hz + RAMP * 2;
-    const cy = baseY + hy;
-    return this.edit(cx - ex, baseY - RAMP * 2, cz - ez, cx + ex, baseY + 2 * hy + RAMP * 2, cz + ez, (ix, iy, iz, old) => {
+    const top = baseY + 2 * hy;
+    const bottoms = new Map();
+    const bottomAt = (ix, iz) => {
+      const k = ix * 65536 + iz;
+      let v = bottoms.get(k);
+      if (v === undefined) {
+        v = support ? Math.min(baseY, support(ix * VOX, iz * VOX) - 0.12) : baseY;
+        bottoms.set(k, v);
+      }
+      return v;
+    };
+    let low = baseY;
+    for (let iz = Math.floor((cz - ez) / VOX); iz <= Math.ceil((cz + ez) / VOX); iz += 2) {
+      for (let ix = Math.floor((cx - ex) / VOX); ix <= Math.ceil((cx + ex) / VOX); ix += 2) low = Math.min(low, bottomAt(ix, iz));
+    }
+    return this.edit(cx - ex, low - 0.1, cz - ez, cx + ex, top + RAMP * 2, cz + ez, (ix, iy, iz, old) => {
       const dx = ix * VOX - cx, dz = iz * VOX - cz;
+      const b = bottomAt(ix, iz);
       const lx = Math.abs(dx * ca + dz * sa) - hx + rr;
-      const ly = Math.abs(iy * VOX - cy) - hy + rr;
+      const ly = Math.abs(iy * VOX - (b + top) / 2) - (top - b) / 2 + rr;
       const lz = Math.abs(-dx * sa + dz * ca) - hz + rr;
       const ox = Math.max(lx, 0), oy = Math.max(ly, 0), oz = Math.max(lz, 0);
       const sdf = Math.sqrt(ox * ox + oy * oy + oz * oz) + Math.min(Math.max(lx, ly, lz), 0) - rr;

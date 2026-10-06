@@ -421,7 +421,9 @@ export class Tools {
       angle = Math.atan2(v.x, -v.z);
     }
     let baseY;
-    if (hit.sculpt) baseY = hit.y - 0.1; // stacked on another block
+    // set against a sculpture where it was clicked (any part over air is filled
+    // down to the ground below by addBlock)
+    if (hit.sculpt) baseY = hit.y - 0.1;
     else {
       // sink to the lowest sand under the footprint so no gap shows on a slope
       let lo = t.heightAt(hit.x, hit.z);
@@ -432,7 +434,9 @@ export class Tools {
       }
       baseY = lo - 0.12;
     }
-    sc.addBlock(hit.x, hit.z, baseY, ax, ay, az, angle);
+    // whatever lies under each part of the block: beach, castle or sculpture
+    const support = (x, z) => Math.max(t.heightAt(x, z), sc.columnTop(x, z, baseY + 0.05));
+    sc.addBlock(hit.x, hit.z, baseY, ax, ay, az, angle, support);
     sc.flushAll();
     if (sc.full) g.ui.toast('沙雕已經用掉太多沙了，先雕琢現有的作品吧', 'info');
     this.stats.sculpt = (this.stats.sculpt || 0) + 1;

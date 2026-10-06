@@ -14,6 +14,10 @@ const TRACKS = {
   4: { bpm: 60, key: 65, chords: [[41, 57, 60, 64, 67], [38, 53, 57, 60, 64], [46, 57, 62, 65, 69], [48, 55, 58, 62, 65]], scale: [0, 2, 4, 7, 9], bright: 0.4 },
 };
 
+// which foley loop each tool plays, and how loud
+const BRUSH_LOOP = { raise: 'sandPack', wall: 'sandPack', dig: 'sandDig', channel: 'sandDig', smooth: 'sandSmooth', flatten: 'sandSmooth', carve: 'sandScrape' };
+const BRUSH_LEVEL = { sandPack: 0.7, sandDig: 0.7, sandSmooth: 0.45, sandScrape: 0.4 };
+
 export class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -23,9 +27,8 @@ export class AudioEngine {
       if (saved) Object.assign(this.vol, saved);
     } catch { /* storage unavailable */ }
     this.track = null;
-    this.brushActive = false;
-    this.brushKind = 'raise';
     this.nextGrain = 0;
+    this.brushLoops = {};
     this.ksCache = new Map();
   }
 
@@ -321,8 +324,10 @@ export class AudioEngine {
       wash2: 'assets/audio/wash2.mp3',
       gulls1: 'assets/audio/gulls1.mp3',
       gulls2: 'assets/audio/gulls2.mp3',
-      scoop1: 'assets/audio/scoop1.mp3',
-      scoop2: 'assets/audio/scoop2.mp3',
+      sandDig: 'assets/audio/sand_dig.wav',
+      sandPack: 'assets/audio/sand_pack.wav',
+      sandSmooth: 'assets/audio/sand_smooth.wav',
+      sandScrape: 'assets/audio/sand_scrape.wav',
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([key, url]) => {
@@ -458,32 +463,54 @@ export class AudioEngine {
     o.stop(t + dur + 0.05);
   }
 
-  // continuous brushing sound, driven every frame by the tool code
+  // Tool sounds while working the sand. Each kind of work has its own real
+  // foley loop (ElevenLabs Sound Effects); the tool code calls this every frame
+  // it is busy, which keeps the loop faded in, and the loop fades out by itself
+  // a moment after the calls stop.
   brush(active, kind = 'raise', wet = 0) {
-    this.brushActive = active;
-    this.brushKind = kind;
-    if (!this.ctx || !active) return;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (!active) {
+      for (const l of Object.values(this.brushLoops)) {
+        l.gain.gain.cancelScheduledValues(t);
+        l.gain.gain.setTargetAtTime(0, t, 0.06);
+      }
+      return;
+    }
+    const key = BRUSH_LOOP[kind] || 'sandPack';
+    const loop = this.brushLoop(key);
+    if (!loop) { this.brushGrain(kind, wet); return; } // still loading: synthesized grains
+    for (const [k, l] of Object.entries(this.brushLoops)) {
+      if (k === key) continue;
+      l.gain.gain.cancelScheduledValues(t);
+      l.gain.gain.setTargetAtTime(0, t, 0.08);
+    }
+    const g = loop.gain.gain;
+    g.cancelScheduledValues(t);
+    g.setTargetAtTime(BRUSH_LEVEL[key], t, 0.05);
+    g.setTargetAtTime(0, t + 0.22, 0.09);
+  }
+
+  brushLoop(key) {
+    if (this.brushLoops[key]) return this.brushLoops[key];
+    const buf = this.samples && this.samples[key];
+    if (!buf) return null;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0;
+    src.connect(gain).connect(this.sfxBus);
+    src.start(0, Math.random() * buf.duration);
+    this.brushLoops[key] = { src, gain };
+    return this.brushLoops[key];
+  }
+
+  brushGrain(kind, wet) {
     const t = this.ctx.currentTime;
     if (t < this.nextGrain) return;
     const dig = kind === 'dig' || kind === 'channel';
     const smooth = kind === 'smooth' || kind === 'flatten';
-    if (kind === 'carve') {
-      if (this.samples && this.samples.scoop1) {
-        this.playSample(Math.random() < 0.5 ? 'scoop1' : 'scoop2', { gain: 0.14, rate: 1.45 + Math.random() * 0.25, pan: (Math.random() - 0.5) * 0.3, duration: 0.2, fadeOut: 0.08 });
-        this.nextGrain = t + 0.12 + Math.random() * 0.06;
-      } else {
-        this.noiseHit(t, { freq: 3400 + Math.random() * 800, q: 1.4, dur: 0.06, vel: 0.04, attack: 0.008 });
-        this.nextGrain = t + 0.08 + Math.random() * 0.04;
-      }
-      return;
-    }
-    if (this.samples && this.samples.scoop1) {
-      const key = Math.random() < 0.5 ? 'scoop1' : 'scoop2';
-      const rate = smooth ? 0.7 + Math.random() * 0.1 : dig ? 0.85 + Math.random() * 0.2 : 1.0 + Math.random() * 0.25 - wet * 0.1;
-      this.playSample(key, { gain: smooth ? 0.22 : 0.42, rate, pan: (Math.random() - 0.5) * 0.4, duration: smooth ? 0.5 : 0.38, fadeOut: 0.12 });
-      this.nextGrain = t + (smooth ? 0.3 : 0.17) + Math.random() * 0.08;
-      return;
-    }
     this.noiseHit(t, {
       freq: smooth ? 1600 : dig ? 1100 + Math.random() * 500 : 2200 + Math.random() * 900 - wet * 900,
       q: 0.9, dur: smooth ? 0.16 : 0.09, vel: smooth ? 0.05 : 0.09, attack: 0.012,
