@@ -15,6 +15,7 @@ import { Landmarks } from '../world/Landmarks.js';
 import { makeDecor, makeFlag, makeChest, makeCrabHome, makeMarker, propTime } from '../world/Props.js';
 import { Tools, TOOLS } from './Tools.js';
 import { Sculpt } from '../world/Sculpt.js';
+import { PhotoMode } from './Photo.js';
 import { Goals } from './Goals.js';
 import { Intro } from './Intro.js';
 import { Post } from '../fx/Post.js';
@@ -102,6 +103,7 @@ export class Game {
     this.landmarks = new Landmarks(this.scene);
 
     this.tools = new Tools(this);
+    this.photo = new PhotoMode(this);
     this.goals = new Goals(this);
     this.post = new Post(renderer, this.scene, this.camera);
     this.ui = new UI(this);
@@ -701,6 +703,11 @@ export class Game {
       this.keys.add(k);
       if (this.state === 'gate' && (k === ' ' || k === 'enter')) { this.ui.leaveGate(); return; }
       if (this.state === 'intro' && (k === 'escape' || k === ' ' || k === 'enter')) { this.intro.skip(); return; }
+      if (this.state === 'photo') {
+        if (k === 'escape') this.photo.exit();
+        if (k === ' ' || k === 'enter') { e.preventDefault(); this.photo.shoot(); }
+        return;
+      }
       if (this.state !== 'play') {
         if (k === 'escape') this.ui.handleEscape();
         return;
@@ -711,6 +718,7 @@ export class Game {
       if (k === ']') this.ui.nudgeBrush(0.15);
       if (k === 't') this.ui.requestTide();
       if (k === 'h') this.ui.toggleHelp();
+      if (k === 'p') { this.photo.enter(); return; }
       if (k === 'f') { const hit = this.pick(); if (hit) this.focusTo = hit.clone(); }
       const tool = TOOLS.findIndex((t) => t.key.toLowerCase() === k);
       if (tool >= 0) this.ui.selectTool(tool);
@@ -775,7 +783,8 @@ export class Game {
     const ground = Math.max(inside ? this.terrain.heightAt(c.target.x, c.target.z) : 0, this.sim.tide);
     const top = Math.max(ground, inside ? this.terrain.topAt(c.target.x, c.target.z) : 0);
     // over a sculpture the focus may rest anywhere up its height (F aims it at a spot)
-    const want = THREE.MathUtils.clamp(c.target.y, ground + 0.3, top + 0.3);
+    // (photo mode keeps whatever height the shot was framed at)
+    const want = THREE.MathUtils.clamp(c.target.y, ground + 0.3, this.state === 'photo' ? ground + 8 : top + 0.3);
     c.target.y += (want - c.target.y) * Math.min(1, dt * 2);
   }
 
@@ -792,7 +801,7 @@ export class Game {
     this.time += dt;
     propTime.value = this.time;
 
-    if (this.state === 'play' || this.state === 'complete') {
+    if (this.state === 'play' || this.state === 'complete' || this.state === 'photo') {
       this.moveCamera(dt);
       this.controls.update();
       this.constrainCamera();
@@ -833,6 +842,8 @@ export class Game {
     this.scenery.update(dt, this.time, this.sim.tide);
     if (playing) this.ui.update(dt);
 
+    this.photo.update();
     this.post.render(dt);
+    this.photo.afterRender();
   }
 }

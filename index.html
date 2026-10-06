@@ -126,6 +126,7 @@
         </div>
         <div class="hud-row">
           <div class="treasure-pill" title="找到的寶藏"><img src="assets/icons/chest.png" alt="" /><span id="treasure-count">0 / 0</span></div>
+          <button id="btn-photo" class="icon-btn" title="和珊珊拍照 (P)">📷</button>
           <button id="btn-undo" class="icon-btn" title="復原 (Ctrl+Z)">↶</button>
           <button id="btn-help" class="icon-btn" title="操作說明 (H)">?</button>
           <button id="btn-hud-settings" class="icon-btn" title="設定">⚙</button>
@@ -148,6 +149,29 @@
       <div id="tip"></div>
     </div>
 
+    <!-- photo mode -->
+    <div id="photo-bar">
+      <div class="viewfinder"><i></i><i></i><i></i><i></i></div>
+      <div class="photo-tip">📷 拍照模式 · 右鍵拖曳旋轉、滾輪縮放、WASD 移動，構好圖按下快門（空白鍵）</div>
+      <div class="photo-controls">
+        <div id="photo-poses"></div>
+        <button id="btn-photo-side" class="photo-small" title="換到另一邊">⇄<span>換邊</span></button>
+        <button id="btn-photo-shoot" title="拍照 (空白鍵)"><span></span></button>
+        <button id="btn-photo-exit" class="photo-small" title="離開 (Esc)">✕<span>離開</span></button>
+      </div>
+    </div>
+    <div id="photo-flash"></div>
+    <div id="photo-modal" class="modal">
+      <div class="modal-card photo-card">
+        <img id="photo-img" alt="沙雕合照" />
+        <div class="photo-actions">
+          <a id="btn-photo-save" class="menu-btn primary"><span>⬇ 下載照片</span></a>
+          <button id="btn-photo-again" class="menu-btn"><span>再拍一張</span></button>
+          <button id="btn-photo-done" class="menu-btn"><span>完成</span></button>
+        </div>
+      </div>
+    </div>
+
     <div id="help">
       <div class="help-card">
         <h2>操作說明</h2>
@@ -159,7 +183,7 @@
           <li>雕刻刀拖曳刻出細紋，<kbd>Shift</kbd>+拖曳堆出細邊；水桶塔可按住拖曳連續蓋</li>
           <li><kbd>B</kbd> 沙雕塊：放一塊壓實的沙（或點城堡把它轉成沙雕），再用挖沙、堆沙、抹順、壓平、雕刻從任何角度雕出人像、美人魚</li>
           <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> 復原　<kbd>Ctrl</kbd>+點擊 移除裝飾或旗幟</li>
-          <li><kbd>F</kbd> 把視角中心移到游標處（雕刻細節時好用）</li>
+          <li><kbd>F</kbd> 把視角中心移到游標處（雕刻細節時好用）　<kbd>P</kbd> 和珊珊在作品前拍照</li>
           <li><kbd>T</kbd> 迎接漲潮　<kbd>Esc</kbd> 暫停</li>
         </ul>
         <p>小訣竅：海浪會慢慢侵蝕沙子。城堡蓋得越高、牆越厚，就越能撐過漲潮！閃爍的光點下方可能埋著寶藏。</p>

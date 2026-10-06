@@ -101,6 +101,7 @@ export class UI {
     panel.addEventListener('pointerleave', () => { this.missionHover = false; this.scheduleCollapse(); });
     $('#btn-undo').onclick = () => g.undo();
     $('#btn-help').onclick = () => this.toggleHelp();
+    $('#btn-photo').onclick = () => g.photo.enter();
     $('#btn-pause').onclick = () => this.togglePause();
     $('#btn-hud-settings').onclick = () => this.openPanel('settings');
     $('#help').onclick = () => this.toggleHelp(false);

@@ -495,6 +495,13 @@ export class AudioEngine {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + 0.01;
     switch (name) {
+      case 'shutter':
+        // mirror flip and shutter curtain: two dry clicks a beat apart
+        this.noiseHit(t, { type: 'highpass', freq: 2500, dur: 0.03, vel: 0.28, attack: 0.001 });
+        this.tone(t, { freq: 210, glideTo: 110, dur: 0.05, vel: 0.12, reverb: 0 });
+        this.noiseHit(t + 0.075, { type: 'highpass', freq: 3200, dur: 0.035, vel: 0.22, attack: 0.001 });
+        this.noiseHit(t + 0.075, { freq: 1400, q: 1.2, dur: 0.06, vel: 0.08, attack: 0.002 });
+        break;
       case 'thump':
         this.tone(t, { freq: 150, glideTo: 48, dur: 0.32, vel: 0.5, reverb: 0.1 });
         this.noiseHit(t, { type: 'lowpass', freq: 900, sweepTo: 200, dur: 0.35, vel: 0.25 });

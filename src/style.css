@@ -148,6 +148,55 @@ input[type='range']::-moz-range-thumb {
 #gate.ready .gate-wait { display: none; }
 .gate-sub { margin: 0 0 7vh; color: rgba(255, 255, 255, 0.86); font-size: 14px; letter-spacing: 0.08em; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5); }
 
+/* ---------- photo mode ---------- */
+#ui.photo-mode #toasts { display: none; } /* game tips would cover the viewfinder */
+#photo-bar { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 0.3s; }
+#photo-bar.show { opacity: 1; visibility: visible; }
+.viewfinder i { position: absolute; width: 46px; height: 46px; border: 3px solid rgba(255, 255, 255, 0.85); filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35)); }
+.viewfinder i:nth-child(1) { top: 22px; left: 22px; border-right: 0; border-bottom: 0; border-top-left-radius: 10px; }
+.viewfinder i:nth-child(2) { top: 22px; right: 22px; border-left: 0; border-bottom: 0; border-top-right-radius: 10px; }
+.viewfinder i:nth-child(3) { bottom: 22px; left: 22px; border-right: 0; border-top: 0; border-bottom-left-radius: 10px; }
+.viewfinder i:nth-child(4) { bottom: 22px; right: 22px; border-left: 0; border-top: 0; border-bottom-right-radius: 10px; }
+.photo-tip {
+  position: absolute; top: 26px; left: 50%; transform: translateX(-50%); padding: 7px 18px; border-radius: 999px;
+  background: rgba(20, 50, 60, 0.55); color: #fff; font-size: 14px; white-space: nowrap; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.photo-controls {
+  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px;
+  padding: 10px 16px; border-radius: 30px; pointer-events: auto;
+  background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 1px solid var(--glass-b); box-shadow: var(--shadow);
+}
+#photo-poses { display: flex; gap: 6px; }
+.photo-pose { width: 64px; height: 84px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; padding-top: 4px; transition: transform 0.2s, background 0.2s, box-shadow 0.2s; }
+.photo-pose img { height: 56px; object-fit: contain; }
+.photo-pose span { font-family: var(--zh); font-size: 12px; font-weight: 700; margin-top: 2px; }
+.photo-pose:hover { background: rgba(255, 255, 255, 0.7); }
+.photo-pose.active { background: #fff; box-shadow: 0 0 0 3px var(--teal); transform: translateY(-4px); }
+.photo-small { display: flex; flex-direction: column; align-items: center; font-size: 22px; width: 56px; padding: 6px 0; border-radius: 14px; }
+.photo-small span { font-size: 12px; font-family: var(--zh); font-weight: 700; }
+.photo-small:hover { background: rgba(255, 255, 255, 0.7); }
+#btn-photo-shoot {
+  width: 74px; height: 74px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.6), 0 6px 16px rgba(0, 0, 0, 0.25);
+  display: grid; place-items: center; transition: transform 0.15s;
+}
+#btn-photo-shoot span { width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff9d7a, #ff5f5f); }
+#btn-photo-shoot:hover { transform: scale(1.06); }
+#btn-photo-shoot:active { transform: scale(0.94); }
+#photo-flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 60; }
+#photo-flash.go { animation: photoFlash 0.6s ease-out; }
+@keyframes photoFlash { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+.modal-card.photo-card { width: min(980px, 94vw); max-height: 94vh; overflow-y: auto; overflow-x: hidden; padding: 18px; align-items: stretch; }
+#photo-img { display: block; max-width: 100%; max-height: 74vh; margin: 0 auto; border-radius: 6px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25); transform: rotate(-1deg); animation: photoDrop 0.6s cubic-bezier(.2, .9, .3, 1.3) both; }
+@keyframes photoDrop { from { transform: translateY(-30px) rotate(-6deg) scale(0.9); opacity: 0; } to { transform: rotate(-1deg); opacity: 1; } }
+.photo-actions { display: flex; justify-content: center; gap: 10px; margin: 16px 0 8px; flex-wrap: wrap; }
+.modal-card .photo-actions .menu-btn { min-width: 0; padding: 8px 22px; font-size: 18px; text-decoration: none; }
+@media (max-width: 760px) {
+  .photo-controls { gap: 6px; padding: 8px; }
+  .photo-pose { width: 50px; height: 70px; }
+  .photo-pose img { height: 44px; }
+  .photo-tip { display: none; }
+}
+
 /* ---------- shared keyframes ---------- */
 @keyframes kenburns { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.08) translate(-1.5%, -1%); } }
 @keyframes gateIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
