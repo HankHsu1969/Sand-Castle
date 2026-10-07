@@ -7,6 +7,33 @@ import { makeDecor } from './Props.js';
 
 export const landmarkTime = { value: 0 };
 
+// Torch flame: a real flame photo on an upright, camera-facing card. The tip
+// sways and licks while the base stays put, and the whole flame flickers.
+const FLAME_VERT = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    vec3 up = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    vec3 right = normalize(cross(up, vec3(0.0, 0.0, 1.0)));
+    float sx = length(modelMatrix[0].xyz), sy = length(modelMatrix[1].xyz);
+    mv.xyz += right * position.x * sx + up * position.y * sy;
+    gl_Position = projectionMatrix * mv;
+  }`;
+const FLAME_FRAG = `
+  uniform sampler2D map;
+  uniform float time;
+  uniform float seed;
+  varying vec2 vUv;
+  void main() {
+    float h = vUv.y;
+    vec2 uv = vUv;
+    uv.x += (sin(h * 8.0 - time * 7.0 + seed) * 0.5 + sin(h * 15.0 - time * 11.0 + seed * 1.7) * 0.3) * 0.07 * h * h;
+    uv.y = h * (1.0 + 0.07 * sin(time * 9.0 + seed * 2.3));
+    float flick = 0.88 + 0.12 * sin(time * 17.0 + seed * 3.1) * sin(time * 5.3 + seed);
+    gl_FragColor = vec4(texture2D(map, uv).rgb * 2.4 * flick, 1.0);
+  }`;
+
 // ---------- procedural textures ----------
 function canvasTex(w, h, draw, repeat = true) {
   const c = document.createElement('canvas');
@@ -75,7 +102,30 @@ export class Landmarks {
     this.hullBlue = withFog(new THREE.MeshStandardMaterial({ color: 0x2f6f9f, roughness: 0.5, side: THREE.DoubleSide }), 'lm-plain');
     this.hullInner = withFog(new THREE.MeshStandardMaterial({ color: 0xe9e2d0, roughness: 0.7, side: THREE.DoubleSide }), 'lm-plain');
     this.lamp = new THREE.MeshStandardMaterial({ color: 0xfff1c2, emissive: 0xffd36b, emissiveIntensity: 2.2, roughness: 0.2 });
-    this.flame = new THREE.MeshBasicMaterial({ color: 0xffa13d, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    // tiki torches: bamboo pole, woven rattan head, a real flame
+    const tl = new THREE.TextureLoader();
+    const photo = (url, rx, ry) => {
+      const t = tl.load(url);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(rx, ry);
+      t.anisotropy = 4;
+      return t;
+    };
+    this.torchPole = withFog(new THREE.MeshStandardMaterial({ map: photo('assets/img/torch_bamboo.jpg', 1, 2.5), roughness: 0.6 }), 'lm-wood');
+    this.torchHead = withFog(new THREE.MeshStandardMaterial({ map: photo('assets/img/torch_rattan.jpg', 3, 1), roughness: 0.9 }), 'lm-wood');
+    this.torchFuel = withFog(new THREE.MeshStandardMaterial({ color: 0x24170f, roughness: 1 }), 'lm-plain');
+    this.flameTex = tl.load('assets/img/torch_flame.jpg');
+    this.flameTex.colorSpace = THREE.SRGBColorSpace;
+    this.flameTime = { value: 0 };
+    this.glowTex = canvasTex(64, 64, (g, w, h) => {
+      const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      r.addColorStop(0, 'rgba(255,190,110,1)');
+      r.addColorStop(0.35, 'rgba(255,140,50,0.45)');
+      r.addColorStop(1, 'rgba(255,110,30,0)');
+      g.fillStyle = r;
+      g.fillRect(0, 0, w, h);
+    }, false);
     this.flames = [];
     this.items = [];
   }
@@ -88,7 +138,7 @@ export class Landmarks {
   }
 
   add(o) {
-    o.traverse((m) => { if (m.isMesh && m.material !== this.flame) { m.castShadow = true; m.receiveShadow = true; } });
+    o.traverse((m) => { if (m.isMesh && !m.userData.noShadow) { m.castShadow = true; m.receiveShadow = true; } });
     this.group.add(o);
     this.items.push(o);
     return o;
@@ -228,20 +278,46 @@ export class Landmarks {
 
   torch() {
     const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.2, 6), this.bamboo);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 2.2, 12), this.torchPole);
     pole.position.y = 1.1;
     g.add(pole);
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.1, 0.32, 8), this.thatch);
-    cup.position.y = 2.3;
-    g.add(cup);
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.5, 8), this.flame);
-    flame.position.y = 2.68;
+    // two rope lashings under the head
+    for (const y of [1.93, 2.02]) {
+      const lash = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.017, 6, 16), this.rope);
+      lash.rotation.x = Math.PI / 2;
+      lash.position.y = y;
+      g.add(lash);
+    }
+    // a flared woven head, with charred fuel showing at the top
+    const profile = [[0.06, 0], [0.085, 0.05], [0.125, 0.17], [0.165, 0.32], [0.182, 0.4], [0.17, 0.425], [0.15, 0.415]]
+      .map(([r, y]) => new THREE.Vector2(r, y));
+    const head = new THREE.Mesh(new THREE.LatheGeometry(profile, 20), this.torchHead);
+    head.position.y = 2.08;
+    g.add(head);
+    const fuel = new THREE.Mesh(new THREE.CircleGeometry(0.155, 20).rotateX(-Math.PI / 2), this.torchFuel);
+    fuel.position.y = 2.08 + 0.39;
+    g.add(fuel);
+    const seed = Math.random() * 6;
+    const flame = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.26, 0.84).translate(0, 0.4, 0),
+      new THREE.ShaderMaterial({
+        uniforms: { map: { value: this.flameTex }, time: this.flameTime, seed: { value: seed } },
+        vertexShader: FLAME_VERT,
+        fragmentShader: FLAME_FRAG,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    flame.position.y = 2.44;
+    flame.userData.noShadow = true;
+    flame.frustumCulled = false;
     g.add(flame);
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xff9a3d, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
-    glow.scale.set(1.6, 1.6, 1);
-    glow.position.y = 2.65;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.scale.set(1.5, 1.5, 1);
+    glow.position.y = 2.75;
     g.add(glow);
-    this.flames.push({ flame, glow, phase: Math.random() * 6 });
+    this.flames.push({ glow, phase: seed });
     return g;
   }
 
@@ -375,11 +451,8 @@ export class Landmarks {
 
   update(dt, time, tide) {
     landmarkTime.value = time;
-    for (const f of this.flames) {
-      const s = 1 + Math.sin(time * 13 + f.phase) * 0.12 + Math.sin(time * 7.3 + f.phase) * 0.08;
-      f.flame.scale.set(1, s, 1);
-      f.glow.material.opacity = 0.42 + 0.15 * Math.sin(time * 9 + f.phase);
-    }
+    this.flameTime.value = time;
+    for (const f of this.flames) f.glow.material.opacity = 0.4 + 0.12 * Math.sin(time * 9 + f.phase) * Math.sin(time * 4.1 + f.phase);
     for (const b of this.floaters || []) {
       b.position.y = tide + 0.05 + Math.sin(time * 1.2) * 0.06;
       b.rotation.x = Math.sin(time * 0.9) * 0.05;

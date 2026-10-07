@@ -366,6 +366,59 @@ export class Sculpt {
     });
   }
 
+  // A preset sculpture (see SculptModels.js) standing on (cx, baseY, cz), its
+  // front turned by `angle` and grown by `scale`. Under the base, as with
+  // blocks, sand runs on down to whatever holds it up.
+  addModel(m, cx, cz, baseY, angle, scale, support = null) {
+    const { nx, ny, nz, data, low } = m;
+    const p = (m.size / Math.max(nx, ny, nz)) * scale; // one model cell, in world units
+    const ca = Math.cos(angle), sa = Math.sin(angle);
+    const hx = (nx * p) / 2, hz = (nz * p) / 2;
+    const ex = Math.abs(ca) * hx + Math.abs(sa) * hz + p, ez = Math.abs(sa) * hx + Math.abs(ca) * hz + p;
+    const top = baseY + ny * p;
+    const baseBand = Math.max(2, Math.round(ny * 0.12)); // columns starting this low are part of the base
+    const at = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz ? 0 : data[x + nx * (y + ny * z)]);
+    const bottoms = new Map();
+    const bottomAt = (ix, iz) => {
+      const k = ix * 65536 + iz;
+      let v = bottoms.get(k);
+      if (v === undefined) { v = support ? Math.min(baseY, support(ix * VOX, iz * VOX) - 0.12) : baseY; bottoms.set(k, v); }
+      return v;
+    };
+    let lowest = baseY;
+    for (let iz = Math.floor((cz - ez) / VOX); iz <= Math.ceil((cz + ez) / VOX); iz += 3) {
+      for (let ix = Math.floor((cx - ex) / VOX); ix <= Math.ceil((cx + ex) / VOX); ix += 3) lowest = Math.min(lowest, bottomAt(ix, iz));
+    }
+    return this.edit(cx - ex, lowest - 0.1, cz - ez, cx + ex, top + p, cz + ez, (ix, iy, iz, old) => {
+      // into the model's own frame
+      const dx = ix * VOX - cx, dz = iz * VOX - cz;
+      const gx = (dx * ca + dz * sa) / p + nx / 2 - 0.5;
+      const gz = (-dx * sa + dz * ca) / p + nz / 2 - 0.5;
+      if (gx < -1 || gz < -1 || gx > nx || gz > nz) return old;
+      const y = iy * VOX;
+      const gy = (y - baseY) / p - 0.5;
+      let v = 0;
+      if (gy > -1 && gy < ny) {
+        const x0 = Math.floor(gx), y0 = Math.floor(gy), z0 = Math.floor(gz);
+        const tx = gx - x0, ty = gy - y0, tz = gz - z0;
+        const c00 = at(x0, y0, z0) * (1 - tx) + at(x0 + 1, y0, z0) * tx;
+        const c10 = at(x0, y0 + 1, z0) * (1 - tx) + at(x0 + 1, y0 + 1, z0) * tx;
+        const c01 = at(x0, y0, z0 + 1) * (1 - tx) + at(x0 + 1, y0, z0 + 1) * tx;
+        const c11 = at(x0, y0 + 1, z0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1, z0 + 1) * tx;
+        v = ((c00 * (1 - ty) + c10 * ty) * (1 - tz) + (c01 * (1 - ty) + c11 * ty) * tz) / 255;
+      }
+      if (support && y < baseY + (baseBand + 1) * p) {
+        // the base continues down into the sand below it
+        const cxi = Math.round(gx), czi = Math.round(gz);
+        if (cxi >= 0 && czi >= 0 && cxi < nx && czi < nz) {
+          const l = low[cxi + nx * czi];
+          if (l >= 0 && l <= baseBand && y < baseY + (l + 0.5) * p && y >= bottomAt(ix, iz)) v = Math.max(v, at(cxi, l, czi) / 255);
+        }
+      }
+      return v > old ? v : old;
+    });
+  }
+
   // Turn the built sand around (x, z) — towers, walls, mounds — into sculpture
   // with exactly the same shape, so it can be carved from the side. Sand that
   // stays a heightfield keeps one cell of overlap so the seam never shows.

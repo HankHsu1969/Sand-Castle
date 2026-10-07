@@ -1,0 +1,74 @@
+[
+ {
+  "id": "dolphin",
+  "name": "海豚",
+  "size": 5.5,
+  "thumb": "assets/sculptures/thumbs/dolphin.png"
+ },
+ {
+  "id": "queen",
+  "name": "女王頭像",
+  "size": 5.0,
+  "thumb": "assets/sculptures/thumbs/queen.png"
+ },
+ {
+  "id": "castle",
+  "name": "城堡",
+  "size": 6.0,
+  "thumb": "assets/sculptures/thumbs/castle.png"
+ },
+ {
+  "id": "cat",
+  "name": "趴著的貓",
+  "size": 5.5,
+  "thumb": "assets/sculptures/thumbs/cat.png"
+ },
+ {
+  "id": "mermaid",
+  "name": "美人魚",
+  "size": 5.0,
+  "thumb": "assets/sculptures/thumbs/mermaid.png"
+ },
+ {
+  "id": "turtle",
+  "name": "海龜",
+  "size": 5.0,
+  "thumb": "assets/sculptures/thumbs/turtle.png"
+ },
+ {
+  "id": "octopus",
+  "name": "章魚",
+  "size": 5.0,
+  "thumb": "assets/sculptures/thumbs/octopus.png"
+ },
+ {
+  "id": "crab",
+  "name": "螃蟹",
+  "size": 4.5,
+  "thumb": "assets/sculptures/thumbs/crab.png"
+ },
+ {
+  "id": "seahorse",
+  "name": "海馬",
+  "size": 5.0,
+  "thumb": "assets/sculptures/thumbs/seahorse.png"
+ },
+ {
+  "id": "lion",
+  "name": "睡獅",
+  "size": 6.0,
+  "thumb": "assets/sculptures/thumbs/lion.png"
+ },
+ {
+  "id": "dinosaur",
+  "name": "恐龍",
+  "size": 6.0,
+  "thumb": "assets/sculptures/thumbs/dinosaur.png"
+ },
+ {
+  "id": "ship",
+  "name": "海盜船",
+  "size": 6.0,
+  "thumb": "assets/sculptures/thumbs/ship.png"
+ }
+]

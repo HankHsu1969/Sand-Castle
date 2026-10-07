@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { N, S, HALF, FLOOR } from '../core/config.js';
 import { segDist, smoothstep } from '../core/noise.js';
+import { SCULPT_MODELS, loadSculptModel } from '../world/SculptModels.js';
 
 export const TOOLS = [
   { id: 'raise', name: '堆沙', icon: 'assets/icons/raise.png', key: '1', hint: '按住左鍵堆起濕沙 · 在沙雕上則從任何角度補上沙' },
@@ -8,7 +9,7 @@ export const TOOLS = [
   { id: 'smooth', name: '抹順', icon: 'assets/icons/smooth.png', key: '3', hint: '把粗糙的沙面抹得圓滑，沙雕的臉和身體也適用' },
   { id: 'flatten', name: '壓平', icon: 'assets/icons/flatten.png', key: '4', hint: '以點下處的高度壓出平台 · 在沙雕上削出平整的切面' },
   { id: 'carve', name: '雕刻', icon: 'assets/icons/carve.png', key: '5', hint: '拖曳刻出細紋與五官 · Shift 拖曳堆出細邊 · 在塔樓側面雕刻會自動轉成立體沙雕' },
-  { id: 'sculpt', name: '沙雕塊', icon: 'assets/icons/sculpt.png', key: 'B', hint: '點沙灘放一塊壓實的沙（Shift：平躺長塊）· 點城堡把它變成可從側面雕刻的沙雕' },
+  { id: 'sculpt', name: '沙雕塊', icon: 'assets/icons/sculpt.png', key: 'B', hint: '選方塊、長塊或 12 種大型沙雕，點沙灘放下（大小滑桿調尺寸）· 點城堡把它變成可雕刻的沙雕' },
   { id: 'tower', name: '水桶塔', icon: 'assets/icons/tower.png', key: '6', hint: '點一下倒扣水桶，做出一座塔樓 · 按住拖曳可連續蓋一排' },
   { id: 'wall', name: '城牆', icon: 'assets/icons/wall.png', key: '7', hint: '按住拖曳，沿路築起有城垛的城牆' },
   { id: 'channel', name: '挖渠', icon: 'assets/icons/channel.png', key: '8', hint: '按住拖曳挖出水道或護城河' },
@@ -39,6 +40,7 @@ export class Tools {
     this.radius = 1.0;
     this.strength = 1.0;
     this.decorType = 'scallop';
+    this.sculptKind = 'block'; // 'block', 'slab' or a preset sculpture id
     this.down = false;
     this.stroke = null;
     this.stamps = [];
@@ -72,7 +74,7 @@ export class Tools {
 
   effectiveRadius() {
     if (this.tool === 'decor' || this.tool === 'flag') return 0.35;
-    if (this.tool === 'sculpt') return this.blockDims().hx;
+    if (this.tool === 'sculpt') return this.sculptFootprint();
     return this.radius;
   }
 
@@ -83,6 +85,21 @@ export class Tools {
     const w = 0.06 + this.radius * 0.075;
     return { width: w, depth: w * 0.45 * this.strength };
   }
+
+  // preset sculptures follow the size slider, from about ¾ to 1.4× their own size
+  modelScale() { return Math.min(1.4, Math.max(0.75, 0.6 + this.radius * 0.4)); }
+
+  presetModel() { return SCULPT_MODELS.find((m) => m.id === this.sculptKind); }
+
+  // longest side of what the sculpt tool will place
+  sculptSize() {
+    const m = this.presetModel();
+    if (m) return m.size * this.modelScale();
+    const { hx } = this.blockDims();
+    return this.sculptKind === 'slab' ? hx * 4.2 : hx * 2;
+  }
+
+  sculptFootprint() { return this.presetModel() ? this.sculptSize() * 0.42 : this.blockDims().hx; }
 
   blockDims() {
     const hx = 0.25 + this.radius * 0.38;
@@ -105,7 +122,7 @@ export class Tools {
       const n = hit.normal;
       const r = this.tool === 'carve' ? this.carveVolDims().width / 2
         : this.tool === 'decor' || this.tool === 'flag' ? 0.2
-        : this.tool === 'sculpt' ? this.blockDims().hx
+        : this.tool === 'sculpt' ? this.sculptFootprint()
         : this.volRadius();
       _u.crossVectors(Math.abs(n.y) < 0.9 ? _up : _x, n).normalize();
       _v.crossVectors(n, _u);
@@ -159,12 +176,14 @@ export class Tools {
     switch (this.tool) {
       case 'decor':
       case 'flag':
+        if (this.tool === 'decor') g.ui.showPicker('decor', false);
         if (remove) g.removeNearestProp(hit, this.tool);
         else if (this.tool === 'decor') g.placeDecor(this.decorType, hit);
         else g.placeFlag(hit);
         this.down = false;
         return;
       case 'sculpt':
+        g.ui.showPicker('sculpt', false);
         g.pushUndo();
         this.placeSculpt(hit, !!(ev && ev.shiftKey));
         this.down = false;
@@ -406,6 +425,8 @@ export class Tools {
 
   placeSculpt(hit, slab) {
     const g = this.game, t = this.terrain, sc = g.sculpt;
+    if (this.presetModel()) { this.placeModel(hit); return; }
+    slab = slab || this.sculptKind === 'slab';
     if (!hit.sculpt) {
       // clicking a castle turns it into sculpture instead of burying it in a block
       const i = Math.round((hit.x + HALF) / S), j = Math.round((hit.z + HALF) / S);
@@ -442,6 +463,53 @@ export class Tools {
     this.stats.sculpt = (this.stats.sculpt || 0) + 1;
     g.audio.sfx('thump');
     g.dustRing(new THREE.Vector3(hit.x, baseY + 0.12, hit.z), Math.max(ax, az));
+    this.sculptHint();
+  }
+
+  // One of the preset sculptures, its front turned toward the camera.
+  async placeModel(hit) {
+    const g = this.game, t = this.terrain, sc = g.sculpt;
+    const info = this.presetModel();
+    let m;
+    try {
+      m = await loadSculptModel(info.id);
+    } catch {
+      g.ui.toast('沙雕模型載入失敗，請再試一次', 'info');
+      return;
+    }
+    const scale = this.modelScale();
+    const p = (m.size / Math.max(m.nx, m.ny, m.nz)) * scale;
+    const toCam = new THREE.Vector2(g.camera.position.x - hit.x, g.camera.position.z - hit.z);
+    if (toCam.lengthSq() < 1e-6) toCam.set(0, 1);
+    toCam.normalize();
+    const angle = Math.atan2(-toCam.x, toCam.y);
+    const ca = Math.cos(angle), sa = Math.sin(angle);
+    let baseY;
+    if (hit.sculpt) baseY = hit.y - 0.1;
+    else {
+      // bed the base into the lowest sand under it so no edge of it floats
+      let lo = t.heightAt(hit.x, hit.z);
+      for (let z = 0; z < m.nz; z += 4) {
+        for (let x = 0; x < m.nx; x += 4) {
+          const l = m.low[x + m.nx * z];
+          if (l < 0 || l > m.ny * 0.12) continue;
+          const lx = (x + 0.5 - m.nx / 2) * p, lz = (z + 0.5 - m.nz / 2) * p;
+          lo = Math.min(lo, t.heightAt(hit.x + lx * ca - lz * sa, hit.z + lx * sa + lz * ca));
+        }
+      }
+      baseY = lo - 0.15;
+    }
+    const support = (x, z) => Math.max(t.heightAt(x, z), sc.columnTop(x, z, baseY + 0.05));
+    sc.addModel(m, hit.x, hit.z, baseY, angle, scale, support);
+    sc.flushAll();
+    if (sc.full) g.ui.toast('沙雕已經用掉太多沙了，先雕琢現有的作品吧', 'info');
+    this.stats.sculpt = (this.stats.sculpt || 0) + 1;
+    g.audio.sfx('thump');
+    g.audio.sfx('sparkle');
+    const c = new THREE.Vector3(hit.x, baseY + 0.15, hit.z);
+    g.dustRing(c, this.sculptSize() * 0.45);
+    g.sparkleBurst(c.setY(baseY + m.ny * p * 0.6), 18, 1.2);
+    g.ui.toast(`🏛️ ${info.name}沙雕完成！可以用挖沙、抹順、雕刻再細修`, 'info');
     this.sculptHint();
   }
 

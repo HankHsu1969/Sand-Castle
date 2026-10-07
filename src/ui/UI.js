@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { LEVELS, TREASURES } from '../world/levels.js';
 import { TOOLS } from '../game/Tools.js';
 import { DECOR_INFO, DECOR_LIST, makeDecor } from '../world/Props.js';
+import { SCULPT_MODELS, preloadSculptModels } from '../world/SculptModels.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -37,6 +38,16 @@ export class UI {
         <img src="${t.icon}" alt="" draggable="false"/>
         <span class="tool-key">${t.key}</span>
         <span class="tool-name">${t.name}</span>
+      </button>`).join('');
+
+    $('#sculpt-palette').innerHTML = [
+      { id: 'block', name: '方塊', shape: 'block' },
+      { id: 'slab', name: '長塊', shape: 'slab' },
+      ...SCULPT_MODELS,
+    ].map((m) => `
+      <button class="sculpt-pick${m.id === 'block' ? ' active' : ''}" data-kind="${m.id}" title="${m.name}">
+        ${m.thumb ? `<img src="${m.thumb}" alt="" draggable="false"/>` : `<i class="shape-${m.shape}"></i>`}
+        <span>${m.name}</span>
       </button>`).join('');
 
     $('#decor-palette').innerHTML = DECOR_LIST.map((d) => `
@@ -90,7 +101,20 @@ export class UI {
       if (!b) return;
       g.tools.decorType = b.dataset.decor;
       for (const x of document.querySelectorAll('.decor')) x.classList.toggle('active', x === b);
+      this.audio.sfx('tool');
+      this.showPicker('decor', false);
     });
+    $('#decor-current').onclick = () => { this.showPicker('decor', true); this.audio.sfx('tool'); };
+    $('#sculpt-palette').addEventListener('click', (e) => {
+      const b = e.target.closest('.sculpt-pick');
+      if (!b) return;
+      g.tools.sculptKind = b.dataset.kind;
+      for (const x of document.querySelectorAll('.sculpt-pick')) x.classList.toggle('active', x === b);
+      this.updateBrushLabel();
+      this.audio.sfx('tool');
+      this.showPicker('sculpt', false);
+    });
+    $('#sculpt-current').onclick = () => { this.showPicker('sculpt', true); this.audio.sfx('tool'); };
     $('#brush-size').oninput = (e) => { g.tools.radius = Number(e.target.value); this.updateBrushLabel(); };
     $('#brush-strength').oninput = (e) => { g.tools.strength = Number(e.target.value); this.updateBrushLabel(); };
 
@@ -136,6 +160,14 @@ export class UI {
     const tilt = $('#tiltshift');
     tilt.checked = g.save.settings.tilt !== false;
     tilt.onchange = () => { g.save.settings.tilt = tilt.checked; g.post.setTilt(tilt.checked); g.persist(); };
+    const hints = $('#show-hints');
+    hints.checked = g.save.settings.hints !== false;
+    $('#tool-label').classList.toggle('off', !hints.checked);
+    hints.onchange = () => {
+      g.save.settings.hints = hints.checked;
+      $('#tool-label').classList.toggle('off', !hints.checked);
+      g.persist();
+    };
   }
 
   // ---------- gate / intro / title ----------
@@ -276,17 +308,40 @@ export class UI {
   selectTool(i, quiet) {
     const t = TOOLS[i];
     if (!t) return;
+    const again = this.game.tools.tool === t.id;
     this.toolIndex = i;
     this.game.tools.setTool(t.id);
     document.querySelectorAll('.tool').forEach((b, k) => b.classList.toggle('active', k === i));
     $('#tool-label').innerHTML = `<b>${t.name}</b><span>${t.hint}</span>`;
-    $('#decor-palette').classList.toggle('show', t.id === 'decor');
+    if (t.id === 'sculpt') preloadSculptModels();
+    // choosing a tool with a picker opens it; choosing it again folds it away
+    for (const name of ['decor', 'sculpt']) {
+      if (t.id === name) this.showPicker(name, !again || !$(`#${name}-palette`).classList.contains('show'));
+      else this.hidePicker(name);
+    }
     $('#brush-panel').classList.toggle('dim', t.id === 'decor' || t.id === 'flag');
     this.updateBrushLabel();
     if (!quiet) this.audio.sfx('tool');
-    if (t.id === 'decor') {
-      document.querySelectorAll('.decor').forEach((x) => x.classList.toggle('active', x.dataset.decor === this.game.tools.decorType));
+  }
+
+  // The decoration and sculpture pickers fold into a small chip once something
+  // is chosen, so they don't cover the beach where the piece is going.
+  showPicker(name, open) {
+    const tools = this.game.tools;
+    const pick = name === 'decor'
+      ? document.querySelector(`.decor[data-decor="${tools.decorType}"]`)
+      : document.querySelector(`.sculpt-pick[data-kind="${tools.sculptKind}"]`);
+    if (pick) {
+      for (const x of pick.parentElement.children) x.classList.toggle('active', x === pick);
+      $(`#${name}-current .cur`).innerHTML = pick.innerHTML;
     }
+    $(`#${name}-palette`).classList.toggle('show', open);
+    $(`#${name}-current`).classList.toggle('show', !open);
+  }
+
+  hidePicker(name) {
+    $(`#${name}-palette`).classList.remove('show');
+    $(`#${name}-current`).classList.remove('show');
   }
 
   nudgeBrush(d) {
@@ -299,7 +354,7 @@ export class UI {
 
   updateBrushLabel() {
     const t = this.game.tools;
-    const size = t.tool === 'carve' ? t.carveDims().width : t.tool === 'sculpt' ? t.blockDims().hx * 2 : t.radius * 2;
+    const size = t.tool === 'carve' ? t.carveDims().width : t.tool === 'sculpt' ? t.sculptSize() : t.radius * 2;
     $('#brush-size-val').textContent = `${Math.round(size * 30)} 公分`;
     $('#brush-strength-val').textContent = `${Math.round(t.strength * 100)}%`;
   }
